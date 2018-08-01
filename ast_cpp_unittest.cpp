@@ -43,13 +43,13 @@ namespace test {
 
 class TestClass {
 public:
-void NormalMethod(int normalarg, float normal2);
-virtual void SubMethod(int subarg) const;
+  void NormalMethod(int normalarg, float normal2);
+  virtual void SubMethod(int subarg) const;
 };  // class TestClass
 
 class TestSubClass : public TestClass {
 public:
-virtual void SubMethod(int subarg) const;
+  virtual void SubMethod(int subarg) const;
 };  // class TestSubClass
 
 }  // namespace test
@@ -70,13 +70,13 @@ const char kExpectedSwitchOutput[] =
 R"(switch (var) {
 case 2:
 {
-baz;
+  baz;
 }
 break;
 case 1:
 {
-foo;
-bar;
+  foo;
+  bar;
 }
 break;
 }
@@ -84,8 +84,8 @@ break;
 
 const char kExpectedMethodImplOutput[] =
 R"(return_type ClassName::MethodName(arg 1, arg 2, arg 3) const {
-foo;
-bar;
+  foo;
+  bar;
 }
 )";
 }  // namespace
@@ -95,8 +95,7 @@ class AstCppTests : public ::testing::Test {
   void CompareGeneratedCode(const AstNode& node,
                             const string& expected_output) {
     string actual_output;
-    CodeWriterPtr writer = GetStringWriter(&actual_output);
-    node.Write(writer.get());
+    node.Write(CodeWriter::ForString(&actual_output).get());
     EXPECT_EQ(expected_output, actual_output);
   }
 };  // class AstCppTests
@@ -178,7 +177,7 @@ TEST_F(AstCppTests, GeneratesStatementBlock) {
   StatementBlock block;
   block.AddStatement(unique_ptr<AstNode>(new Statement("foo")));
   block.AddStatement(unique_ptr<AstNode>(new Statement("bar")));
-  CompareGeneratedCode(block, "{\nfoo;\nbar;\n}\n");
+  CompareGeneratedCode(block, "{\n  foo;\n  bar;\n}\n");
 }
 
 TEST_F(AstCppTests, GeneratesConstructorImpl) {
@@ -212,11 +211,11 @@ TEST_F(AstCppTests, GeneratesIfStatement) {
   IfStatement s(new LiteralExpression("foo"));
   s.OnTrue()->AddLiteral("on true1");
   s.OnFalse()->AddLiteral("on false");
-  CompareGeneratedCode(s, "if (foo) {\non true1;\n}\nelse {\non false;\n}\n");
+  CompareGeneratedCode(s, "if (foo) {\n  on true1;\n}\nelse {\n  on false;\n}\n");
 
   IfStatement s2(new LiteralExpression("bar"));
   s2.OnTrue()->AddLiteral("on true1");
-  CompareGeneratedCode(s2, "if (bar) {\non true1;\n}\n");
+  CompareGeneratedCode(s2, "if (bar) {\n  on true1;\n}\n");
 }
 
 TEST_F(AstCppTests, GeneratesSwitchStatement) {
@@ -239,6 +238,16 @@ TEST_F(AstCppTests, GeneratesMethodImpl) {
   b->AddLiteral("foo");
   b->AddLiteral("bar");
   CompareGeneratedCode(m, kExpectedMethodImplOutput);
+}
+
+TEST_F(AstCppTests, ToString) {
+  std::string literal = "void foo() {}";
+  LiteralDecl decl(literal);
+  std::string actual = decl.ToString();
+  EXPECT_EQ(literal, actual);
+  std::string written;
+  decl.Write(CodeWriter::ForString(&written).get());
+  EXPECT_EQ(literal, written);
 }
 
 }  // namespace cpp

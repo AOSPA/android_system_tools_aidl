@@ -69,12 +69,10 @@ class AidlTest : public ::testing::Test {
     cpp_types_.Init();
   }
 
-  unique_ptr<AidlInterface> Parse(const string& path,
-                                  const string& contents,
-                                  TypeNamespace* types,
-                                  AidlError* error = nullptr) {
+  unique_ptr<AidlDefinedType> Parse(const string& path, const string& contents,
+                                    TypeNamespace* types, AidlError* error = nullptr) {
     io_delegate_.SetFileContents(path, contents);
-    unique_ptr<AidlInterface> ret;
+    unique_ptr<AidlDefinedType> ret;
     std::vector<std::unique_ptr<AidlImport>> imports;
     AidlError actual_error = ::android::aidl::internals::load_and_validate_aidl(
         preprocessed_files_,
@@ -151,9 +149,10 @@ TEST_F(AidlTest, ParsesNullableAnnotation) {
                      (is_nullable) ? "@nullable" : ""),
         &cpp_types_);
     ASSERT_NE(nullptr, parse_result);
-    ASSERT_FALSE(parse_result->GetMethods().empty());
-    EXPECT_EQ(parse_result->GetMethods()[0]->GetType().IsNullable(),
-              is_nullable);
+    const AidlInterface* interface = parse_result->AsInterface();
+    ASSERT_NE(nullptr, interface);
+    ASSERT_FALSE(interface->GetMethods().empty());
+    EXPECT_EQ(interface->GetMethods()[0]->GetType().IsNullable(), is_nullable);
   }
 }
 
@@ -165,9 +164,10 @@ TEST_F(AidlTest, ParsesUtf8Annotations) {
                      (is_utf8) ? "@utf8InCpp" : ""),
         &cpp_types_);
     ASSERT_NE(nullptr, parse_result);
-    ASSERT_FALSE(parse_result->GetMethods().empty());
-    EXPECT_EQ(parse_result->GetMethods()[0]->GetType().IsUtf8InCpp(),
-              is_utf8);
+    const AidlInterface* interface = parse_result->AsInterface();
+    ASSERT_NE(nullptr, interface);
+    ASSERT_FALSE(interface->GetMethods().empty());
+    EXPECT_EQ(interface->GetMethods()[0]->GetType().IsUtf8InCpp(), is_utf8);
   }
 }
 
@@ -288,6 +288,28 @@ TEST_F(AidlTest, FailOnDuplicateConstantNames) {
   EXPECT_EQ(AidlError::BAD_CONSTANTS, reported_error);
 }
 
+TEST_F(AidlTest, FailOnManyDefinedTypes) {
+  AidlError reported_error;
+  EXPECT_EQ(nullptr, Parse("p/IFoo.aidl",
+                           R"(package p;
+                      interface IFoo {}
+                      parcelable Bar;
+                      parcelable IBar {}
+                      parcelable StructuredParcelable {}
+                      interface IBaz {}
+                   )",
+                           &cpp_types_, &reported_error));
+  // Parse success is important for clear error handling even if the cases aren't
+  // actually supported in code generation.
+  EXPECT_EQ(AidlError::BAD_TYPE, reported_error);
+}
+
+TEST_F(AidlTest, FailOnNoDefinedTypes) {
+  AidlError reported_error;
+  EXPECT_EQ(nullptr, Parse("p/IFoo.aidl", R"(package p;)", &cpp_types_, &reported_error));
+  EXPECT_EQ(AidlError::BAD_TYPE, reported_error);
+}
+
 TEST_F(AidlTest, FailOnMalformedConstHexValue) {
   AidlError reported_error;
   EXPECT_EQ(nullptr,
@@ -314,7 +336,9 @@ TEST_F(AidlTest, ParsePositiveConstHexValue) {
            &cpp_types_,
            &reported_error);
   EXPECT_NE(nullptr, cpp_parse_result);
-  const auto& cpp_int_constants = cpp_parse_result->GetIntConstants();
+  const AidlInterface* interface = cpp_parse_result->AsInterface();
+  ASSERT_NE(nullptr, interface);
+  const auto& cpp_int_constants = interface->GetIntConstants();
   EXPECT_EQ((size_t)1, cpp_int_constants.size());
   EXPECT_EQ("POSITIVE_HEX_VALUE", cpp_int_constants[0]->GetName());
   EXPECT_EQ(245, cpp_int_constants[0]->GetValue());
@@ -332,7 +356,9 @@ TEST_F(AidlTest, ParseNegativeConstHexValue) {
            &cpp_types_,
            &reported_error);
   EXPECT_NE(nullptr, cpp_parse_result);
-  const auto& cpp_int_constants = cpp_parse_result->GetIntConstants();
+  const AidlInterface* interface = cpp_parse_result->AsInterface();
+  ASSERT_NE(nullptr, interface);
+  const auto& cpp_int_constants = interface->GetIntConstants();
   EXPECT_EQ((size_t)1, cpp_int_constants.size());
   EXPECT_EQ("NEGATIVE_HEX_VALUE", cpp_int_constants[0]->GetName());
   EXPECT_EQ(-1, cpp_int_constants[0]->GetValue());

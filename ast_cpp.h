@@ -38,6 +38,7 @@ class AstNode {
   AstNode() = default;
   virtual ~AstNode() = default;
   virtual void Write(CodeWriter* to) const = 0;
+  std::string ToString();
 };  // class AstNode
 
 class Declaration : public AstNode {
@@ -48,6 +49,18 @@ class Declaration : public AstNode {
  private:
   DISALLOW_COPY_AND_ASSIGN(Declaration);
 };  // class Declaration
+
+class LiteralDecl : public Declaration {
+ public:
+  explicit LiteralDecl(const std::string& expression);
+  ~LiteralDecl() = default;
+  void Write(CodeWriter* to) const override;
+
+ private:
+  const std::string expression_;
+
+  DISALLOW_COPY_AND_ASSIGN(LiteralDecl);
+};  // class LiteralDecl
 
 class ClassDecl : public Declaration {
  public:

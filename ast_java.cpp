@@ -26,6 +26,12 @@ namespace android {
 namespace aidl {
 namespace java {
 
+std::string AstNode::ToString() {
+  std::string str;
+  Write(CodeWriter::ForString(&str).get());
+  return str;
+}
+
 void WriteModifiers(CodeWriter* to, int mod, int mask) {
   int m = mod & mask;
 
@@ -71,8 +77,8 @@ void Field::Write(CodeWriter* to) const {
     to->Write("%s\n", this->comment.c_str());
   }
   WriteModifiers(to, this->modifiers, SCOPE_MASK | STATIC | FINAL | OVERRIDE);
-  to->Write("%s %s", this->variable->type->JavaType().c_str(),
-            this->variable->name.c_str());
+  this->variable->WriteDeclaration(to);
+
   if (this->value.length() != 0) {
     to->Write(" = %s", this->value.c_str());
   }
@@ -123,12 +129,20 @@ void FieldVariable::Write(CodeWriter* to) const {
   to->Write(".%s", name.c_str());
 }
 
+LiteralStatement::LiteralStatement(const std::string& value) : value_(value) {}
+
+void LiteralStatement::Write(CodeWriter* to) const {
+  to->Write("%s", value_.c_str());
+}
+
 void StatementBlock::Write(CodeWriter* to) const {
   to->Write("{\n");
+  to->Indent();
   int N = this->statements.size();
   for (int i = 0; i < N; i++) {
     this->statements[i]->Write(to);
   }
+  to->Dedent();
   to->Write("}\n");
 }
 
@@ -360,10 +374,12 @@ void SwitchStatement::Write(CodeWriter* to) const {
   to->Write("switch (");
   this->expression->Write(to);
   to->Write(")\n{\n");
+  to->Indent();
   int N = this->cases.size();
   for (int i = 0; i < N; i++) {
     this->cases[i]->Write(to);
   }
+  to->Dedent();
   to->Write("}\n");
 }
 
@@ -417,6 +433,10 @@ void Method::Write(CodeWriter* to) const {
   }
 }
 
+void LiteralClassElement::Write(CodeWriter* to) const {
+  to->Write("%s", element.c_str());
+}
+
 void IntConstant::Write(CodeWriter* to) const {
   WriteModifiers(to, STATIC | FINAL | PUBLIC, ALL_MODIFIERS);
   to->Write("int %s = %d;\n", name.c_str(), value);
@@ -468,12 +488,14 @@ void Class::Write(CodeWriter* to) const {
 
   to->Write("\n");
   to->Write("{\n");
+  to->Indent();
 
   N = this->elements.size();
   for (i = 0; i < N; i++) {
     this->elements[i]->Write(to);
   }
 
+  to->Dedent();
   to->Write("}\n");
 }
 

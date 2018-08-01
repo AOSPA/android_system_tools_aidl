@@ -49,20 +49,23 @@ string AidlType::ToString() const {
   return name_ + (is_array_ ? "[]" : "");
 }
 
-AidlArgument::AidlArgument(AidlArgument::Direction direction, AidlType* type,
-                           std::string name, unsigned line)
-    : type_(type),
+AidlVariableDeclaration::AidlVariableDeclaration(AidlType* type, std::string name, unsigned line)
+    : type_(type), name_(name), line_(line) {}
+
+string AidlVariableDeclaration::ToString() const {
+  return type_->ToString() + " " + name_;
+}
+
+AidlArgument::AidlArgument(AidlArgument::Direction direction, AidlType* type, std::string name,
+                           unsigned line)
+    : AidlVariableDeclaration(type, name, line),
       direction_(direction),
-      direction_specified_(true),
-      name_(name),
-      line_(line) {}
+      direction_specified_(true) {}
 
 AidlArgument::AidlArgument(AidlType* type, std::string name, unsigned line)
-    : type_(type),
+    : AidlVariableDeclaration(type, name, line),
       direction_(AidlArgument::IN_DIR),
-      direction_specified_(false),
-      name_(name),
-      line_(line) {}
+      direction_specified_(false) {}
 
 string AidlArgument::ToString() const {
   string ret;
@@ -81,9 +84,7 @@ string AidlArgument::ToString() const {
     }
   }
 
-  ret += type_->ToString();
-  ret += " ";
-  ret += name_;
+  ret += AidlVariableDeclaration::ToString();
 
   return ret;
 }
@@ -159,12 +160,28 @@ Parser::Parser(const IoDelegate& io_delegate)
   yylex_init(&scanner_);
 }
 
+AidlDefinedType::AidlDefinedType(std::string name, unsigned line,
+                                 const std::string& comments,
+                                 const std::vector<std::string>& package)
+    : AidlType(name, line, comments, false /*is_array*/),
+      package_(package) {}
+
+std::string AidlDefinedType::GetPackage() const {
+  return Join(package_, '.');
+}
+
+std::string AidlDefinedType::GetCanonicalName() const {
+  if (package_.empty()) {
+    return GetName();
+  }
+  return GetPackage() + "." + GetName();
+}
+
 AidlParcelable::AidlParcelable(AidlQualifiedName* name, unsigned line,
                                const std::vector<std::string>& package,
                                const std::string& cpp_header)
-    : name_(name),
-      line_(line),
-      package_(package),
+    : AidlDefinedType(name->GetDotName(), line, "" /*comments*/, package),
+      name_(name),
       cpp_header_(cpp_header) {
   // Strip off quotation marks if we actually have a cpp header.
   if (cpp_header_.length() >= 2) {
@@ -172,26 +189,17 @@ AidlParcelable::AidlParcelable(AidlQualifiedName* name, unsigned line,
   }
 }
 
-std::string AidlParcelable::GetPackage() const {
-  return Join(package_, '.');
-}
-
-std::string AidlParcelable::GetCanonicalName() const {
-  if (package_.empty()) {
-    return GetName();
-  }
-  return GetPackage() + "." + GetName();
-}
+AidlStructuredParcelable::AidlStructuredParcelable(
+    AidlQualifiedName* name, unsigned line, const std::vector<std::string>& package,
+    std::vector<std::unique_ptr<AidlVariableDeclaration>>* variables)
+    : AidlParcelable(name, line, package, "" /*cpp_header*/), variables_(std::move(*variables)) {}
 
 AidlInterface::AidlInterface(const std::string& name, unsigned line,
                              const std::string& comments, bool oneway,
                              std::vector<std::unique_ptr<AidlMember>>* members,
                              const std::vector<std::string>& package)
-    : name_(name),
-      comments_(comments),
-      line_(line),
-      oneway_(oneway),
-      package_(package) {
+    : AidlDefinedType(name, line, comments, package),
+      oneway_(oneway) {
   for (auto& member : *members) {
     AidlMember* local = member.release();
     AidlMethod* method = local->AsMethod();
@@ -212,19 +220,18 @@ AidlInterface::AidlInterface(const std::string& name, unsigned line,
   delete members;
 }
 
-std::string AidlInterface::GetPackage() const {
-  return Join(package_, '.');
-}
-
-std::string AidlInterface::GetCanonicalName() const {
-  if (package_.empty()) {
-    return GetName();
+AidlDefinedType* AidlDocument::ReleaseDefinedType() {
+  if (defined_types_.size() == 0) {
+    return nullptr;
   }
-  return GetPackage() + "." + GetName();
-}
 
-AidlDocument::AidlDocument(AidlInterface* interface)
-    : interface_(interface) {}
+  if (defined_types_.size() > 1) {
+    LOG(ERROR) << "AIDL only supports compiling one defined type per file.";
+    return nullptr;
+  }
+
+  return defined_types_[0].release();
+}
 
 AidlQualifiedName::AidlQualifiedName(std::string term,
                                      std::string comments)
@@ -283,19 +290,14 @@ bool Parser::ParseFile(const string& filename) {
 
   buffer_ = yy_scan_buffer(&(*raw_buffer_)[0], raw_buffer_->length(), scanner_);
 
-  if (yy::parser(this).parse() != 0 || error_ != 0) {
-    return false;}
+  if (yy::parser(this).parse() != 0 || error_ != 0)
+    return false;
 
   if (document_.get() != nullptr)
     return true;
 
   LOG(ERROR) << "Parser succeeded but yielded no document!";
   return false;
-}
-
-void Parser::ReportError(const string& err, unsigned line) {
-  cerr << filename_ << ":" << line << ": " << err << endl;
-  error_ = 1;
 }
 
 std::vector<std::string> Parser::Package() const {

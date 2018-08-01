@@ -83,7 +83,7 @@ std::unique_ptr<CodeWriter> FakeIoDelegate::GetCodeWriter(
   }
   removed_files_.erase(file_path);
   written_file_contents_[file_path] = "";
-  return GetStringWriter(&written_file_contents_[file_path]);
+  return CodeWriter::ForString(&written_file_contents_[file_path]);
 }
 
 void FakeIoDelegate::RemovePath(const std::string& file_path) const {

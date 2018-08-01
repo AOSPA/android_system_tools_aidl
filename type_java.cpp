@@ -58,28 +58,19 @@ string Type::CreatorName() const { return ""; }
 
 string Type::InstantiableName() const { return JavaType(); }
 
-void Type::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
-                         int flags) const {
-  fprintf(stderr, "aidl:internal error %s:%d qualifiedName=%sn", __FILE__,
-          __LINE__, m_javaType.c_str());
-  addTo->Add(new LiteralExpression("/* WriteToParcel error " + m_javaType +
-                                   " */"));
+void Type::WriteToParcel(StatementBlock* /*addTo*/, Variable* /*v*/, Variable* /*parcel*/,
+                         int /*flags*/) const {
+  LOG(FATAL) << "aidl internal error: qualifiedName=" << m_javaType.c_str();
 }
 
-void Type::CreateFromParcel(StatementBlock* addTo, Variable* v,
-                            Variable* parcel, Variable**) const {
-  fprintf(stderr, "aidl:internal error %s:%d qualifiedName=%s\n", __FILE__,
-          __LINE__, m_javaType.c_str());
-  addTo->Add(new LiteralExpression("/* CreateFromParcel error " +
-                                   m_javaType + " */"));
+void Type::CreateFromParcel(StatementBlock* /*addTo*/, Variable* /*v*/, Variable* /*parcel*/,
+                            Variable** /*cl*/) const {
+  LOG(FATAL) << "aidl internal error: qualifiedName=" << m_javaType.c_str();
 }
 
-void Type::ReadFromParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
-                          Variable**) const {
-  fprintf(stderr, "aidl:internal error %s:%d qualifiedName=%s\n", __FILE__,
-          __LINE__, m_javaType.c_str());
-  addTo->Add(new LiteralExpression("/* ReadFromParcel error " +
-                                   m_javaType + " */"));
+void Type::ReadFromParcel(StatementBlock* /*addTo*/, Variable* /*v*/, Variable* /*parcel*/,
+                          Variable** /*cl*/) const {
+  LOG(FATAL) << "aidl internal error: qualifiedName=" << m_javaType.c_str();
 }
 
 Expression* Type::BuildWriteToParcelFlags(int flags) const {
@@ -108,8 +99,8 @@ BasicType::BasicType(const JavaTypeNamespace* types, const string& name,
                                         createArrayParcel, readArrayParcel));
 }
 
-void BasicType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                              Variable* parcel, int flags) const {
+void BasicType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                              int /*flags*/) const {
   addTo->Add(new MethodCall(parcel, m_marshallParcel, 1, v));
 }
 
@@ -128,9 +119,8 @@ BasicArrayType::BasicArrayType(const JavaTypeNamespace* types,
       m_createArrayParcel(createArrayParcel),
       m_readArrayParcel(readArrayParcel) {}
 
-
-void BasicArrayType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                   Variable* parcel, int flags) const {
+void BasicArrayType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                                   int /*flags*/) const {
   addTo->Add(new MethodCall(parcel, m_writeArrayParcel, 1, v));
 }
 
@@ -152,8 +142,8 @@ FileDescriptorType::FileDescriptorType(const JavaTypeNamespace* types)
     m_array_type.reset(new FileDescriptorArrayType(types));
 }
 
-void FileDescriptorType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                       Variable* parcel, int flags) const {
+void FileDescriptorType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                                       int /*flags*/) const {
   addTo->Add(new MethodCall(parcel, "writeRawFileDescriptor", 1, v));
 }
 
@@ -166,8 +156,8 @@ FileDescriptorArrayType::FileDescriptorArrayType(const JavaTypeNamespace* types)
     : Type(types, "java.io", "FileDescriptor", ValidatableType::KIND_BUILT_IN,
            true, true) {}
 
-void FileDescriptorArrayType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                            Variable* parcel, int flags) const {
+void FileDescriptorArrayType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                                            int /*flags*/) const {
   addTo->Add(new MethodCall(parcel, "writeRawFileDescriptorArray", 1, v));
 }
 
@@ -188,8 +178,8 @@ BooleanType::BooleanType(const JavaTypeNamespace* types)
     m_array_type.reset(new BooleanArrayType(types));
 }
 
-void BooleanType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                Variable* parcel, int flags) const {
+void BooleanType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                                int /*flags*/) const {
   addTo->Add(new MethodCall(
       parcel, "writeInt", 1,
       new Ternary(v, new LiteralExpression("1"), new LiteralExpression("0"))));
@@ -205,8 +195,8 @@ void BooleanType::CreateFromParcel(StatementBlock* addTo, Variable* v,
 BooleanArrayType::BooleanArrayType(const JavaTypeNamespace* types)
     : Type(types, "boolean", ValidatableType::KIND_BUILT_IN, true, true) {}
 
-void BooleanArrayType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                     Variable* parcel, int flags) const {
+void BooleanArrayType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                                     int /*flags*/) const {
   addTo->Add(new MethodCall(parcel, "writeBooleanArray", 1, v));
 }
 
@@ -227,8 +217,8 @@ CharType::CharType(const JavaTypeNamespace* types)
     m_array_type.reset(new CharArrayType(types));
 }
 
-void CharType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                             Variable* parcel, int flags) const {
+void CharType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                             int /*flags*/) const {
   addTo->Add(
       new MethodCall(parcel, "writeInt", 1, new Cast(m_types->IntType(), v)));
 }
@@ -241,8 +231,8 @@ void CharType::CreateFromParcel(StatementBlock* addTo, Variable* v,
 CharArrayType::CharArrayType(const JavaTypeNamespace* types)
     : Type(types, "char", ValidatableType::KIND_BUILT_IN, true, true) {}
 
-void CharArrayType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                  Variable* parcel, int flags) const {
+void CharArrayType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                                  int /*flags*/) const {
   addTo->Add(new MethodCall(parcel, "writeCharArray", 1, v));
 }
 
@@ -270,8 +260,8 @@ string StringType::CreatorName() const {
   return "android.os.Parcel.STRING_CREATOR";
 }
 
-void StringType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                               Variable* parcel, int flags) const {
+void StringType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                               int /*flags*/) const {
   addTo->Add(new MethodCall(parcel, "writeString", 1, v));
 }
 
@@ -288,8 +278,8 @@ string StringArrayType::CreatorName() const {
   return "android.os.Parcel.STRING_CREATOR";
 }
 
-void StringArrayType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                    Variable* parcel, int flags) const {
+void StringArrayType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                                    int /*flags*/) const {
   addTo->Add(new MethodCall(parcel, "writeStringArray", 1, v));
 }
 
@@ -363,32 +353,11 @@ RemoteExceptionType::RemoteExceptionType(const JavaTypeNamespace* types)
     : Type(types, "android.os", "RemoteException",
            ValidatableType::KIND_BUILT_IN, false, false) {}
 
-void RemoteExceptionType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                        Variable* parcel, int flags) const {
-  fprintf(stderr, "aidl:internal error %s:%d\n", __FILE__, __LINE__);
-}
-
-void RemoteExceptionType::CreateFromParcel(StatementBlock* addTo, Variable* v,
-                                           Variable* parcel, Variable**) const {
-  fprintf(stderr, "aidl:internal error %s:%d\n", __FILE__, __LINE__);
-}
-
 // ================================================================
 
 RuntimeExceptionType::RuntimeExceptionType(const JavaTypeNamespace* types)
     : Type(types, "java.lang", "RuntimeException",
            ValidatableType::KIND_BUILT_IN, false, false) {}
-
-void RuntimeExceptionType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                         Variable* parcel, int flags) const {
-  fprintf(stderr, "aidl:internal error %s:%d\n", __FILE__, __LINE__);
-}
-
-void RuntimeExceptionType::CreateFromParcel(StatementBlock* addTo, Variable* v,
-                                            Variable* parcel,
-                                            Variable**) const {
-  fprintf(stderr, "aidl:internal error %s:%d\n", __FILE__, __LINE__);
-}
 
 // ================================================================
 
@@ -398,8 +367,8 @@ IBinderType::IBinderType(const JavaTypeNamespace* types)
   m_array_type.reset(new IBinderArrayType(types));
 }
 
-void IBinderType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                Variable* parcel, int flags) const {
+void IBinderType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                                int /*flags*/) const {
   addTo->Add(new MethodCall(parcel, "writeStrongBinder", 1, v));
 }
 
@@ -412,8 +381,8 @@ IBinderArrayType::IBinderArrayType(const JavaTypeNamespace* types)
     : Type(types, "android.os", "IBinder", ValidatableType::KIND_BUILT_IN,
            true, true) {}
 
-void IBinderArrayType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                     Variable* parcel, int flags) const {
+void IBinderArrayType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                                     int /*flags*/) const {
   addTo->Add(new MethodCall(parcel, "writeBinderArray", 1, v));
 }
 
@@ -433,31 +402,11 @@ IInterfaceType::IInterfaceType(const JavaTypeNamespace* types)
     : Type(types, "android.os", "IInterface", ValidatableType::KIND_BUILT_IN,
            false, false) {}
 
-void IInterfaceType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                   Variable* parcel, int flags) const {
-  fprintf(stderr, "aidl:internal error %s:%d\n", __FILE__, __LINE__);
-}
-
-void IInterfaceType::CreateFromParcel(StatementBlock* addTo, Variable* v,
-                                      Variable* parcel, Variable**) const {
-  fprintf(stderr, "aidl:internal error %s:%d\n", __FILE__, __LINE__);
-}
-
 // ================================================================
 
 BinderType::BinderType(const JavaTypeNamespace* types)
     : Type(types, "android.os", "Binder", ValidatableType::KIND_BUILT_IN,
            false, false) {}
-
-void BinderType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                               Variable* parcel, int flags) const {
-  fprintf(stderr, "aidl:internal error %s:%d\n", __FILE__, __LINE__);
-}
-
-void BinderType::CreateFromParcel(StatementBlock* addTo, Variable* v,
-                                  Variable* parcel, Variable**) const {
-  fprintf(stderr, "aidl:internal error %s:%d\n", __FILE__, __LINE__);
-}
 
 // ================================================================
 
@@ -465,31 +414,11 @@ BinderProxyType::BinderProxyType(const JavaTypeNamespace* types)
     : Type(types, "android.os", "BinderProxy", ValidatableType::KIND_BUILT_IN,
            false, false) {}
 
-void BinderProxyType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                    Variable* parcel, int flags) const {
-  fprintf(stderr, "aidl:internal error %s:%d\n", __FILE__, __LINE__);
-}
-
-void BinderProxyType::CreateFromParcel(StatementBlock* addTo, Variable* v,
-                                       Variable* parcel, Variable**) const {
-  fprintf(stderr, "aidl:internal error %s:%d\n", __FILE__, __LINE__);
-}
-
 // ================================================================
 
 ParcelType::ParcelType(const JavaTypeNamespace* types)
     : Type(types, "android.os", "Parcel", ValidatableType::KIND_BUILT_IN,
            false, false) {}
-
-void ParcelType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                               Variable* parcel, int flags) const {
-  fprintf(stderr, "aidl:internal error %s:%d\n", __FILE__, __LINE__);
-}
-
-void ParcelType::CreateFromParcel(StatementBlock* addTo, Variable* v,
-                                  Variable* parcel, Variable**) const {
-  fprintf(stderr, "aidl:internal error %s:%d\n", __FILE__, __LINE__);
-}
 
 // ================================================================
 
@@ -497,25 +426,14 @@ ParcelableInterfaceType::ParcelableInterfaceType(const JavaTypeNamespace* types)
     : Type(types, "android.os", "Parcelable", ValidatableType::KIND_BUILT_IN,
            false, false) {}
 
-void ParcelableInterfaceType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                            Variable* parcel, int flags) const {
-  fprintf(stderr, "aidl:internal error %s:%d\n", __FILE__, __LINE__);
-}
-
-void ParcelableInterfaceType::CreateFromParcel(StatementBlock* addTo,
-                                               Variable* v, Variable* parcel,
-                                               Variable**) const {
-  fprintf(stderr, "aidl:internal error %s:%d\n", __FILE__, __LINE__);
-}
-
 // ================================================================
 
 MapType::MapType(const JavaTypeNamespace* types)
     : Type(types, "java.util", "Map", ValidatableType::KIND_BUILT_IN,
            true, true) {}
 
-void MapType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                            Variable* parcel, int flags) const {
+void MapType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                            int /*flags*/) const {
   addTo->Add(new MethodCall(parcel, "writeMap", 1, v));
 }
 
@@ -551,8 +469,8 @@ ListType::ListType(const JavaTypeNamespace* types)
 
 string ListType::InstantiableName() const { return "java.util.ArrayList"; }
 
-void ListType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                             Variable* parcel, int flags) const {
+void ListType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                             int /*flags*/) const {
   addTo->Add(new MethodCall(parcel, "writeList", 1, v));
 }
 
@@ -692,8 +610,8 @@ InterfaceType::InterfaceType(const JavaTypeNamespace* types,
 
 bool InterfaceType::OneWay() const { return m_oneway; }
 
-void InterfaceType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                  Variable* parcel, int flags) const {
+void InterfaceType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                                  int /*flags*/) const {
   // parcel.writeStrongBinder(v != null ? v.asBinder() : null);
   addTo->Add(
       new MethodCall(parcel, "writeStrongBinder", 1,
@@ -726,8 +644,8 @@ string GenericListType::InstantiableName() const {
   return "java.util.ArrayList<" + m_contained_type->JavaType() + ">";
 }
 
-void GenericListType::WriteToParcel(StatementBlock* addTo, Variable* v,
-                                    Variable* parcel, int flags) const {
+void GenericListType::WriteToParcel(StatementBlock* addTo, Variable* v, Variable* parcel,
+                                    int /*flags*/) const {
   if (m_creator == m_types->StringType()->CreatorName()) {
     addTo->Add(new MethodCall(parcel, "writeStringList", 1, v));
   } else if (m_creator == m_types->IBinderType()->CreatorName()) {
@@ -897,8 +815,8 @@ bool JavaTypeNamespace::AddListType(const std::string& contained_type_name) {
   return true;
 }
 
-bool JavaTypeNamespace::AddMapType(const string& key_type_name,
-                                   const string& value_type_name) {
+bool JavaTypeNamespace::AddMapType(const string& /*key_type_name*/,
+                                   const string& /*value_type_name*/) {
   LOG(ERROR) << "Don't know how to create a Map<K,V> container.";
   return false;
 }
