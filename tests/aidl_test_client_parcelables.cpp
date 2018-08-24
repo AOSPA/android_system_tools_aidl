@@ -151,6 +151,56 @@ bool ConfirmStructuredParcelables(const sp<ITestService>& s) {
   StructuredParcelable parcelable;
   parcelable.f = kDesiredValue;
 
+  if (parcelable.stringDefaultsToFoo != String16("foo")) {
+    cout << "stringDefaultsToFoo should be 'foo' but is " << parcelable.stringDefaultsToFoo << endl;
+    return false;
+  }
+  if (parcelable.byteDefaultsToFour != 4) {
+    cout << "byteDefaultsToFour should be 4 but is " << parcelable.byteDefaultsToFour << endl;
+    return false;
+  }
+  if (parcelable.intDefaultsToFive != 5) {
+    cout << "intDefaultsToFive should be 5 but is " << parcelable.intDefaultsToFive << endl;
+    return false;
+  }
+  if (parcelable.longDefaultsToNegativeSeven != -7) {
+    cout << "longDefaultsToNegativeSeven should be -7 but is "
+         << parcelable.longDefaultsToNegativeSeven << endl;
+    return false;
+  }
+  if (!parcelable.booleanDefaultsToTrue) {
+    cout << "booleanDefaultsToTrue isn't true" << endl;
+    return false;
+  }
+  if (parcelable.charDefaultsToC != 'C') {
+    cout << "charDefaultsToC is " << parcelable.charDefaultsToC << endl;
+    return false;
+  }
+  if (parcelable.floatDefaultsToPi != 3.14f) {
+    cout << "floatDefaultsToPi is " << parcelable.floatDefaultsToPi << endl;
+    return false;
+  }
+  if (parcelable.doubleWithDefault != -3.14e17) {
+    cout << "doubleWithDefault is " << parcelable.doubleWithDefault << " but should be -3.14e17"
+         << endl;
+    return false;
+  }
+  if (parcelable.arrayDefaultsTo123.size() != 3) {
+    cout << "arrayDefaultsTo123 is of length " << parcelable.arrayDefaultsTo123.size() << endl;
+    return false;
+  }
+  for (int i = 0; i < 3; i++) {
+    if (parcelable.arrayDefaultsTo123[i] != i + 1) {
+      cout << "arrayDefaultsTo123[" << i << "] is " << parcelable.arrayDefaultsTo123[i]
+           << " but should be " << i + 1 << endl;
+      return false;
+    }
+  }
+  if (!parcelable.arrayDefaultsToEmpty.empty()) {
+    cout << "arrayDefaultsToEmpty is not empty " << parcelable.arrayDefaultsToEmpty.size() << endl;
+    return false;
+  }
+
   s->FillOutStructuredParcelable(&parcelable);
 
   if (parcelable.shouldContainThreeFs.size() != 3) {
@@ -167,7 +217,7 @@ bool ConfirmStructuredParcelables(const sp<ITestService>& s) {
   }
 
   if (parcelable.shouldBeJerry != "Jerry") {
-    cout << "shouldBeJerry is not Jerry and is instead " << parcelable.shouldBeJerry << endl;
+    cout << "shouldBeJerry should be 'Jerry' but is " << parcelable.shouldBeJerry << endl;
     return false;
   }
 

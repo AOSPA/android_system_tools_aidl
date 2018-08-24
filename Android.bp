@@ -40,9 +40,13 @@ cc_library_host_static {
 
     srcs: [
         "aidl.cpp",
+        "aidl_apicheck.cpp",
         "aidl_language.cpp",
         "aidl_language_l.ll",
         "aidl_language_y.yy",
+        "aidl_typenames.cpp",
+        "aidl_to_cpp.cpp",
+        "aidl_to_java.cpp",
         "ast_cpp.cpp",
         "ast_java.cpp",
         "code_writer.cpp",
@@ -63,7 +67,7 @@ cc_library_host_static {
 cc_binary_host {
     name: "aidl",
     defaults: ["aidl_defaults"],
-    srcs: ["main_java.cpp"],
+    srcs: ["main.cpp"],
     static_libs: [
         "libaidl-common",
         "libbase",
@@ -97,6 +101,7 @@ cc_test_host {
         "aidl_unittest.cpp",
         "ast_cpp_unittest.cpp",
         "ast_java_unittest.cpp",
+        "code_writer_unittest.cpp",
         "generate_cpp_unittest.cpp",
         "io_delegate_unittest.cpp",
         "options_unittest.cpp",
@@ -182,6 +187,7 @@ cc_binary {
         "tests/aidl_test_client_primitives.cpp",
         "tests/aidl_test_client_utf8_strings.cpp",
         "tests/aidl_test_client_service_exceptions.cpp",
+        "tests/aidl_test_client_defaultimpl.cpp",
     ],
 }
 

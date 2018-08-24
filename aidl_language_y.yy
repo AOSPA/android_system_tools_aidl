@@ -1,16 +1,35 @@
 %{
 #include "aidl_language.h"
 #include "aidl_language_y.h"
-#include <map>
+#include "logging.h"
+#include <set>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 int yylex(yy::parser::semantic_type *, yy::parser::location_type *, void *);
 
+AidlLocation loc(const yy::parser::location_type& l) {
+  CHECK(l.begin.filename == l.end.filename);
+  AidlLocation::Point begin {
+    .line = l.begin.line,
+    .column = l.begin.column,
+  };
+  AidlLocation::Point end {
+    .line = l.end.line,
+    .column = l.end.column,
+  };
+  return AidlLocation(*l.begin.filename, begin, end);
+}
+
 #define lex_scanner ps->Scanner()
 
 %}
+
+%initial-action {
+    @$.begin.filename = @$.end.filename =
+        const_cast<std::string *>(&ps->FileName());
+}
 
 %parse-param { Parser* ps }
 %lex-param { void *lex_scanner }
@@ -25,14 +44,15 @@ int yylex(yy::parser::semantic_type *, yy::parser::location_type *, void *);
 
 %union {
     AidlToken* token;
-    int integer;
+    char character;
     std::string *str;
-    AidlType::Annotation annotation;
-    AidlType::Annotation annotation_list;
-    AidlType* type;
-    AidlType* unannotated_type;
+    AidlAnnotation* annotation;
+    std::set<AidlAnnotation>* annotation_list;
+    AidlTypeSpecifier* type;
     AidlArgument* arg;
     AidlArgument::Direction direction;
+    AidlConstantValue* constant_value;
+    std::vector<std::unique_ptr<AidlConstantValue>>* constant_value_list;
     std::vector<std::unique_ptr<AidlArgument>>* arg_list;
     AidlVariableDeclaration* variable;
     std::vector<std::unique_ptr<AidlVariableDeclaration>>* variable_list;
@@ -43,16 +63,19 @@ int yylex(yy::parser::semantic_type *, yy::parser::location_type *, void *);
     AidlInterface* interface;
     AidlParcelable* parcelable;
     AidlDefinedType* declaration;
-    AidlDocument* declaration_list;
+    std::vector<std::unique_ptr<AidlTypeSpecifier>>* type_args;
 }
 
 %token<token> ANNOTATION "annotation"
 %token<token> C_STR "string literal"
-%token<token> HEXVALUE "hex literal"
 %token<token> IDENTIFIER "identifier"
 %token<token> INTERFACE "interface"
 %token<token> ONEWAY "oneway"
-%token<integer> INTVALUE "int literal"
+
+%token<character> CHARVALUE "char literal"
+%token<token> FLOATVALUE "float literal"
+%token<token> HEXVALUE "hex literal"
+%token<token> INTVALUE "int literal"
 
 %token '(' ')' ',' '=' '[' ']' '<' '>' '.' '{' '}' ';'
 %token CONST "const"
@@ -61,13 +84,12 @@ int yylex(yy::parser::semantic_type *, yy::parser::location_type *, void *);
 %token IMPORT "import"
 %token IN "in"
 %token INOUT "inout"
-%token INT "int"
 %token OUT "out"
 %token PACKAGE "package"
 %token PARCELABLE "parcelable"
-%token STRING "string"
+%token TRUE_LITERAL "true"
+%token FALSE_LITERAL "false"
 
-%type<declaration_list> decls
 %type<declaration> decl
 %type<variable_list> variable_decls
 %type<variable> variable_decl
@@ -80,19 +102,40 @@ int yylex(yy::parser::semantic_type *, yy::parser::location_type *, void *);
 %type<annotation> annotation
 %type<annotation_list>annotation_list
 %type<type> type
-%type<unannotated_type> unannotated_type
+%type<type> unannotated_type
 %type<arg_list> arg_list
 %type<arg> arg
 %type<direction> direction
-%type<str> generic_list
+%type<type_args> type_args
 %type<qname> qualified_name
+%type<constant_value> constant_value
+%type<constant_value_list> constant_value_list
+%type<constant_value_list> constant_value_non_empty_list
 
 %type<token> identifier error
 %%
 document
- : package imports decls
-  { ps->SetDocument($3); }
- ;
+ : api_dump { ps->SetAsApiDump(); }
+ | source {};
+
+source
+ : package imports decls {};
+
+api_dump
+ : package_groups {};
+
+package_groups
+ : package_group {}
+ | package_groups package_group {};
+
+package_group
+ : package_decl '{' decls '}' {};
+
+package_decl
+ : PACKAGE qualified_name
+  {
+    ps->SetPackage(unique_ptr<AidlQualifiedName>($2));
+  };
 
 /* A couple of tokens that are keywords elsewhere are identifiers when
  * occurring in the identifier position. Therefore identifier is a
@@ -104,16 +147,12 @@ identifier
   { $$ = $1; }
  | CPP_HEADER
   { $$ = new AidlToken("cpp_header", ""); }
- | INT
-  { $$ = new AidlToken("int", ""); }
- | STRING
-  { $$ = new AidlToken("String", ""); }
  ;
 
 package
  : {}
  | PACKAGE qualified_name ';'
-  { ps->SetPackage($2); };
+  { ps->SetPackage(unique_ptr<AidlQualifiedName>($2)); };
 
 imports
  : {}
@@ -121,11 +160,13 @@ imports
 
 import
  : IMPORT qualified_name ';'
-  { ps->AddImport($2, @1.begin.line); };
+  { ps->AddImport(new AidlImport(loc(@2), $2->GetDotName()));
+    delete $2;
+  };
 
 qualified_name
  : identifier {
-    $$ = new AidlQualifiedName($1->GetText(), $1->GetComments());
+    $$ = new AidlQualifiedName(loc(@1), $1->GetText(), $1->GetComments());
     delete $1;
   }
  | qualified_name '.' identifier
@@ -135,29 +176,25 @@ qualified_name
   };
 
 decls
- : /* empty */
-  { $$ = new AidlDocument(); }
- | decls decl {
-   $$ = $1;
-   $$->AddDefinedType($2);
+ : decl {
+    ps->AddDefinedType(unique_ptr<AidlDefinedType>($1));
   }
- ;
+ | decls decl {
+    ps->AddDefinedType(unique_ptr<AidlDefinedType>($2));
+  };
 
 decl
  : annotation_list unannotated_decl
    {
     $$ = $2;
 
-    bool is_unstructured_parcelable =
-      $$->AsParcelable() != nullptr && $$->AsStructuredParcelable() == nullptr;
-
-    if (is_unstructured_parcelable && $1 != AidlAnnotatable::AnnotationNone) {
-      std::cerr << ps->FileName() << ":" << @1 << ": unstructured parcelables cannot be annotated"
-                << std::endl;
+    if ($$->AsUnstructuredParcelable() != nullptr && !$1->empty()) {
+      AIDL_ERROR($$) << "unstructured parcelables cannot be annotated";
       ps->AddError();
     }
 
-    $$->Annotate($1);
+    $$->Annotate(std::move(*$1));
+    delete $1;
    }
  ;
 
@@ -170,14 +207,14 @@ unannotated_decl
 
 parcelable_decl
  : PARCELABLE qualified_name ';' {
-    $$ = new AidlParcelable($2, @2.begin.line, ps->Package());
+    $$ = new AidlParcelable(loc(@2), $2, ps->Package());
   }
  | PARCELABLE qualified_name CPP_HEADER C_STR ';' {
-    $$ = new AidlParcelable($2, @2.begin.line, ps->Package(), $4->GetText());
+    $$ = new AidlParcelable(loc(@2), $2, ps->Package(), $4->GetText());
   }
  | PARCELABLE identifier '{' variable_decls '}' {
-    AidlQualifiedName* name = new AidlQualifiedName($2->GetText(), $2->GetComments());
-    $$ = new AidlStructuredParcelable(name, @2.begin.line, ps->Package(), $4);
+    AidlQualifiedName* name = new AidlQualifiedName(loc(@2), $2->GetText(), $2->GetComments());
+    $$ = new AidlStructuredParcelable(loc(@2), name, ps->Package(), $4);
  }
  | PARCELABLE error ';' {
     ps->AddError();
@@ -186,7 +223,8 @@ parcelable_decl
 
 variable_decls
  : /* empty */ {
-    $$ = new std::vector<std::unique_ptr<AidlVariableDeclaration>>; }
+    $$ = new std::vector<std::unique_ptr<AidlVariableDeclaration>>;
+ }
  | variable_decls variable_decl {
     $$ = $1;
     if ($2 != nullptr) {
@@ -196,7 +234,10 @@ variable_decls
 
 variable_decl
  : type identifier ';' {
-   $$ = new AidlVariableDeclaration($1, $2->GetText(), @2.begin.line);
+   $$ = new AidlVariableDeclaration(loc(@2), $1, $2->GetText());
+ }
+ | type identifier '=' constant_value ';' {
+   $$ = new AidlVariableDeclaration(loc(@2), $1, $2->GetText(),  $4);
  }
  | error ';' {
    ps->AddError();
@@ -205,14 +246,12 @@ variable_decl
 
 interface_decl
  : INTERFACE identifier '{' interface_members '}' {
-    $$ = new AidlInterface($2->GetText(), @1.begin.line, $1->GetComments(),
-                           false, $4, ps->Package());
+    $$ = new AidlInterface(loc(@1), $2->GetText(), $1->GetComments(), false, $4, ps->Package());
     delete $1;
     delete $2;
   }
  | ONEWAY INTERFACE identifier '{' interface_members '}' {
-    $$ = new AidlInterface($3->GetText(), @2.begin.line, $1->GetComments(),
-                           true, $5, ps->Package());
+    $$ = new AidlInterface(loc(@2), $3->GetText(),  $1->GetComments(), true, $5, ps->Package());
     delete $1;
     delete $2;
     delete $3;
@@ -237,42 +276,75 @@ interface_members
     $$ = $1;
   };
 
+constant_value
+ : TRUE_LITERAL { $$ = AidlConstantValue::Boolean(loc(@1), true); }
+ | FALSE_LITERAL { $$ = AidlConstantValue::Boolean(loc(@1), false); }
+ | CHARVALUE { $$ = AidlConstantValue::Character(loc(@1), $1); }
+ | INTVALUE {
+    $$ = AidlConstantValue::Integral(loc(@1), $1->GetText());
+    delete $1;
+  }
+ | FLOATVALUE {
+    $$ = AidlConstantValue::Floating(loc(@1), $1->GetText());
+    delete $1;
+  }
+ | HEXVALUE {
+    $$ = AidlConstantValue::Hex(loc(@1), $1->GetText());
+    delete $1;
+  }
+ | C_STR {
+    $$ = AidlConstantValue::String(loc(@1), $1->GetText());
+    delete $1;
+  }
+ | '{' constant_value_list '}' {
+    $$ = AidlConstantValue::Array(loc(@1), $2);
+    delete $2;
+  }
+ ;
+
+constant_value_list
+ : /* empty */ {
+    $$ = new std::vector<std::unique_ptr<AidlConstantValue>>;
+ }
+ | constant_value_non_empty_list {
+    $$ = $1;
+ }
+ ;
+
+constant_value_non_empty_list
+ : constant_value {
+    $$ = new std::vector<std::unique_ptr<AidlConstantValue>>;
+    $$->push_back(std::unique_ptr<AidlConstantValue>($1));
+ }
+ | constant_value_non_empty_list ',' constant_value {
+    $$ = $1;
+    $$->push_back(std::unique_ptr<AidlConstantValue>($3));
+ }
+ ;
+
 constant_decl
- : CONST INT identifier '=' INTVALUE ';' {
-    $$ = new AidlIntConstant($3->GetText(), $5);
+ : CONST type identifier '=' constant_value ';' {
+    $$ = new AidlConstantDeclaration(loc(@3), $2, $3->GetText(), $5);
     delete $3;
-   }
- | CONST INT identifier '=' HEXVALUE ';' {
-    $$ = new AidlIntConstant($3->GetText(), $5->GetText(), @5.begin.line);
-    delete $3;
-   }
- | CONST STRING identifier '=' C_STR ';' {
-    $$ = new AidlStringConstant($3->GetText(), $5->GetText(), @5.begin.line);
-    delete $3;
-    delete $5;
    }
  ;
 
 method_decl
  : type identifier '(' arg_list ')' ';' {
-    $$ = new AidlMethod(false, $1, $2->GetText(), $4, @2.begin.line,
-                        $1->GetComments());
+    $$ = new AidlMethod(loc(@2), false, $1, $2->GetText(), $4, $1->GetComments());
     delete $2;
   }
  | ONEWAY type identifier '(' arg_list ')' ';' {
-    $$ = new AidlMethod(true, $2, $3->GetText(), $5, @3.begin.line,
-                        $1->GetComments());
+    $$ = new AidlMethod(loc(@3), true, $2, $3->GetText(), $5, $1->GetComments());
     delete $1;
     delete $3;
   }
  | type identifier '(' arg_list ')' '=' INTVALUE ';' {
-    $$ = new AidlMethod(false, $1, $2->GetText(), $4, @2.begin.line,
-                        $1->GetComments(), $7);
+    $$ = new AidlMethod(loc(@2), false, $1, $2->GetText(), $4, $1->GetComments(), std::stoi($7->GetText()));
     delete $2;
   }
  | ONEWAY type identifier '(' arg_list ')' '=' INTVALUE ';' {
-    $$ = new AidlMethod(true, $2, $3->GetText(), $5, @3.begin.line,
-                        $1->GetComments(), $8);
+    $$ = new AidlMethod(loc(@3), true, $2, $3->GetText(), $5, $1->GetComments(), std::stoi($8->GetText()));
     delete $1;
     delete $3;
   };
@@ -291,11 +363,11 @@ arg_list
 
 arg
  : direction type identifier {
-    $$ = new AidlArgument($1, $2, $3->GetText(), @3.begin.line);
+    $$ = new AidlArgument(loc(@3), $1, $2, $3->GetText());
     delete $3;
   }
  | type identifier {
-    $$ = new AidlArgument($1, $2->GetText(), @2.begin.line);
+    $$ = new AidlArgument(loc(@2), $1, $2->GetText());
     delete $2;
   }
  | error {
@@ -304,67 +376,55 @@ arg
 
 unannotated_type
  : qualified_name {
-    $$ = new AidlType($1->GetDotName(), @1.begin.line, $1->GetComments(), false);
+    $$ = new AidlTypeSpecifier(loc(@1), $1->GetDotName(), false, nullptr, $1->GetComments());
+    ps->DeferResolution($$);
     delete $1;
   }
  | qualified_name '[' ']' {
-    $$ = new AidlType($1->GetDotName(), @1.begin.line, $1->GetComments(),
-                      true);
+    $$ = new AidlTypeSpecifier(loc(@1), $1->GetDotName(), true, nullptr, $1->GetComments());
+    ps->DeferResolution($$);
     delete $1;
   }
- | qualified_name '<' generic_list '>' {
-    $$ = new AidlType($1->GetDotName() + "<" + *$3 + ">", @1.begin.line,
-                      $1->GetComments(), false);
+ | qualified_name '<' type_args '>' {
+    $$ = new AidlTypeSpecifier(loc(@1), $1->GetDotName(), false, $3, $1->GetComments());
+    ps->DeferResolution($$);
     delete $1;
-    delete $3;
   };
 
 type
  : annotation_list unannotated_type {
     $$ = $2;
-    $2->Annotate($1);
+    $2->Annotate(std::move(*$1));
+    delete $1;
   };
 
-generic_list
- : qualified_name {
-    $$ = new std::string($1->GetDotName());
-    delete $1;
+type_args
+ : unannotated_type {
+    $$ = new std::vector<std::unique_ptr<AidlTypeSpecifier>>();
+    $$->emplace_back($1);
   }
- | generic_list ',' qualified_name {
-    $$ = new std::string(*$1 + "," + $3->GetDotName());
-    delete $1;
-    delete $3;
+ | type_args ',' unannotated_type {
+    $1->emplace_back($3);
   };
 
 annotation_list
  :
-  { $$ = AidlAnnotatable::AnnotationNone; }
+  { $$ = new std::set<AidlAnnotation>(); }
  | annotation_list annotation
-  { $$ = static_cast<AidlAnnotatable::Annotation>($1 | $2); };
+  {
+    if ($2 != nullptr) {
+      $1->insert(std::move(*$2));
+      delete $2;
+    }
+  };
 
 annotation
  : ANNOTATION
-  { static const std::map<std::string, AidlAnnotatable::Annotation> kAnnotations = {
-      { "nullable", AidlAnnotatable::AnnotationNullable },
-      { "utf8", AidlAnnotatable::AnnotationUtf8 },
-      { "utf8InCpp", AidlAnnotatable::AnnotationUtf8InCpp },
-    };
-
-    auto it = kAnnotations.find($1->GetText());
-    if (it == kAnnotations.end()) {
-      std::cerr << ps->FileName() << ":" << @1 << ": '" << $1->GetText()
-                << "' is not a recognized annotation. It must be one of:";
-      for (const auto& kv : kAnnotations) {
-        std::cerr << " " << kv.first;
-      }
-      std::cerr << "." << std::endl;
-
+  {
+    $$ = AidlAnnotation::Parse(loc(@1), $1->GetText());
+    if ($$ == nullptr) {
       ps->AddError();
-      $$ = AidlAnnotatable::AnnotationNone;
-    } else {
-      $$ = it->second;
     }
-
   };
 
 direction
@@ -380,7 +440,7 @@ direction
 #include <ctype.h>
 #include <stdio.h>
 
-void yy::parser::error(const yy::parser::location_type& l,
-                       const std::string& errstr) {
-  std::cerr << ps->FileName() << ":" << l << ": " << errstr << std::endl;
+void yy::parser::error(const yy::parser::location_type& l, const std::string& errstr) {
+  AIDL_ERROR(loc(l)) << errstr;
+  // parser will return error value
 }

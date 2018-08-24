@@ -89,8 +89,9 @@ public:
 )";
 
 const char kExpectedComplexTypeClientSourceOutput[] =
-R"(#include <android/os/BpComplexTypeInterface.h>
+    R"(#include <android/os/BpComplexTypeInterface.h>
 #include <binder/Parcel.h>
+#include <android-base/macros.h>
 
 namespace android {
 
@@ -122,6 +123,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::SEND, _aidl_data, &_aidl_reply);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->Send(goes_in, goes_in_and_out, goes_out, _aidl_return);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -163,6 +167,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::PIFF, _aidl_data, &_aidl_reply, ::android::IBinder::FLAG_ONEWAY);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->Piff(times);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -185,6 +192,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::TAKESABINDER, _aidl_data, &_aidl_reply);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->TakesABinder(f, _aidl_return);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -214,6 +224,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::NULLABLEBINDER, _aidl_data, &_aidl_reply);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->NullableBinder(_aidl_return);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -247,6 +260,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::STRINGLISTMETHOD, _aidl_data, &_aidl_reply);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->StringListMethod(input, output, _aidl_return);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -284,6 +300,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::BINDERLISTMETHOD, _aidl_data, &_aidl_reply);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->BinderListMethod(input, output, _aidl_return);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -321,6 +340,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::TAKESAFILEDESCRIPTOR, _aidl_data, &_aidl_reply);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->TakesAFileDescriptor(f, _aidl_return);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -354,6 +376,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::TAKESAFILEDESCRIPTORARRAY, _aidl_data, &_aidl_reply);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->TakesAFileDescriptorArray(f, _aidl_return);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -379,8 +404,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
 )";
 
 const char kExpectedComplexTypeClientWithTraceSourceOutput[] =
-R"(#include <android/os/BpComplexTypeInterface.h>
+    R"(#include <android/os/BpComplexTypeInterface.h>
 #include <binder/Parcel.h>
+#include <android-base/macros.h>
 
 namespace android {
 
@@ -413,6 +439,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::SEND, _aidl_data, &_aidl_reply);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->Send(goes_in, goes_in_and_out, goes_out, _aidl_return);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -455,6 +484,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::PIFF, _aidl_data, &_aidl_reply, ::android::IBinder::FLAG_ONEWAY);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->Piff(times);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -478,6 +510,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::TAKESABINDER, _aidl_data, &_aidl_reply);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->TakesABinder(f, _aidl_return);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -508,6 +543,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::NULLABLEBINDER, _aidl_data, &_aidl_reply);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->NullableBinder(_aidl_return);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -542,6 +580,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::STRINGLISTMETHOD, _aidl_data, &_aidl_reply);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->StringListMethod(input, output, _aidl_return);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -580,6 +621,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::BINDERLISTMETHOD, _aidl_data, &_aidl_reply);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->BinderListMethod(input, output, _aidl_return);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -618,6 +662,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::TAKESAFILEDESCRIPTOR, _aidl_data, &_aidl_reply);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->TakesAFileDescriptor(f, _aidl_return);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -652,6 +699,9 @@ BpComplexTypeInterface::BpComplexTypeInterface(const ::android::sp<::android::IB
     goto _aidl_error;
   }
   _aidl_ret_status = remote()->transact(IComplexTypeInterface::TAKESAFILEDESCRIPTORARRAY, _aidl_data, &_aidl_reply);
+  if (UNLIKELY(_aidl_ret_status == ::android::UNKNOWN_TRANSACTION && IComplexTypeInterface::getDefaultImpl())) {
+     return IComplexTypeInterface::getDefaultImpl()->TakesAFileDescriptorArray(f, _aidl_return);
+  }
   if (((_aidl_ret_status) != (::android::OK))) {
     goto _aidl_error;
   }
@@ -1210,7 +1260,7 @@ namespace os {
 )";
 
 const char kExpectedComplexTypeInterfaceHeaderOutput[] =
-R"(#ifndef AIDL_GENERATED_ANDROID_OS_I_COMPLEX_TYPE_INTERFACE_H_
+    R"(#ifndef AIDL_GENERATED_ANDROID_OS_I_COMPLEX_TYPE_INTERFACE_H_
 #define AIDL_GENERATED_ANDROID_OS_I_COMPLEX_TYPE_INTERFACE_H_
 
 #include <android-base/unique_fd.h>
@@ -1254,6 +1304,20 @@ public:
   };
 };  // class IComplexTypeInterface
 
+class IComplexTypeInterfaceDefault : public IComplexTypeInterface {
+public:
+  ::android::IBinder* onAsBinder() override;
+  ::android::binder::Status Send(const ::std::unique_ptr<::std::vector<int32_t>>& goes_in, ::std::vector<double>* goes_in_and_out, ::std::vector<bool>* goes_out, ::std::vector<int32_t>* _aidl_return) override;
+  ::android::binder::Status Piff(int32_t times) override;
+  ::android::binder::Status TakesABinder(const ::android::sp<::foo::IFooType>& f, ::android::sp<::foo::IFooType>* _aidl_return) override;
+  ::android::binder::Status NullableBinder(::android::sp<::foo::IFooType>* _aidl_return) override;
+  ::android::binder::Status StringListMethod(const ::std::vector<::android::String16>& input, ::std::vector<::android::String16>* output, ::std::vector<::android::String16>* _aidl_return) override;
+  ::android::binder::Status BinderListMethod(const ::std::vector<::android::sp<::android::IBinder>>& input, ::std::vector<::android::sp<::android::IBinder>>* output, ::std::vector<::android::sp<::android::IBinder>>* _aidl_return) override;
+  ::android::binder::Status TakesAFileDescriptor(const ::android::base::unique_fd& f, ::android::base::unique_fd* _aidl_return) override;
+  ::android::binder::Status TakesAFileDescriptorArray(const ::std::vector<::android::base::unique_fd>& f, ::std::vector<::android::base::unique_fd>* _aidl_return) override;
+
+};
+
 }  // namespace os
 
 }  // namespace android
@@ -1262,7 +1326,7 @@ public:
 )";
 
 const char kExpectedComplexTypeInterfaceSourceOutput[] =
-R"(#include <android/os/IComplexTypeInterface.h>
+    R"(#include <android/os/IComplexTypeInterface.h>
 #include <android/os/BpComplexTypeInterface.h>
 
 namespace android {
@@ -1270,6 +1334,42 @@ namespace android {
 namespace os {
 
 IMPLEMENT_META_INTERFACE(ComplexTypeInterface, "android.os.IComplexTypeInterface")
+
+::android::IBinder* IComplexTypeInterfaceDefault::onAsBinder() {
+  return nullptr;
+}
+
+::android::binder::Status IComplexTypeInterfaceDefault::Send(const ::std::unique_ptr<::std::vector<int32_t>>&, ::std::vector<double>*, ::std::vector<bool>*, ::std::vector<int32_t>* ) {
+  return ::android::binder::Status::fromStatusT(::android::UNKNOWN_TRANSACTION);
+}
+
+::android::binder::Status IComplexTypeInterfaceDefault::Piff(int32_t) {
+  return ::android::binder::Status::fromStatusT(::android::UNKNOWN_TRANSACTION);
+}
+
+::android::binder::Status IComplexTypeInterfaceDefault::TakesABinder(const ::android::sp<::foo::IFooType>&, ::android::sp<::foo::IFooType>* ) {
+  return ::android::binder::Status::fromStatusT(::android::UNKNOWN_TRANSACTION);
+}
+
+::android::binder::Status IComplexTypeInterfaceDefault::NullableBinder(::android::sp<::foo::IFooType>* ) {
+  return ::android::binder::Status::fromStatusT(::android::UNKNOWN_TRANSACTION);
+}
+
+::android::binder::Status IComplexTypeInterfaceDefault::StringListMethod(const ::std::vector<::android::String16>&, ::std::vector<::android::String16>*, ::std::vector<::android::String16>* ) {
+  return ::android::binder::Status::fromStatusT(::android::UNKNOWN_TRANSACTION);
+}
+
+::android::binder::Status IComplexTypeInterfaceDefault::BinderListMethod(const ::std::vector<::android::sp<::android::IBinder>>&, ::std::vector<::android::sp<::android::IBinder>>*, ::std::vector<::android::sp<::android::IBinder>>* ) {
+  return ::android::binder::Status::fromStatusT(::android::UNKNOWN_TRANSACTION);
+}
+
+::android::binder::Status IComplexTypeInterfaceDefault::TakesAFileDescriptor(const ::android::base::unique_fd&, ::android::base::unique_fd* ) {
+  return ::android::binder::Status::fromStatusT(::android::UNKNOWN_TRANSACTION);
+}
+
+::android::binder::Status IComplexTypeInterfaceDefault::TakesAFileDescriptorArray(const ::std::vector<::android::base::unique_fd>&, ::std::vector<::android::base::unique_fd>* ) {
+  return ::android::binder::Status::fromStatusT(::android::UNKNOWN_TRANSACTION);
+}
 
 }  // namespace os
 
@@ -1280,36 +1380,29 @@ IMPLEMENT_META_INTERFACE(ComplexTypeInterface, "android.os.IComplexTypeInterface
 
 class ASTTest : public ::testing::Test {
  protected:
-  ASTTest(string file_path, string file_contents)
-      : file_path_(file_path),
-        file_contents_(file_contents) {
+  ASTTest(const string& cmdline, const string& file_contents)
+      : options_(Options::From(cmdline)), file_contents_(file_contents) {
     types_.Init();
   }
 
-  unique_ptr<AidlInterface> ParseInterface() {
-    io_delegate_.SetFileContents(file_path_, file_contents_);
+  AidlInterface* ParseSingleInterface() {
+    io_delegate_.SetFileContents(options_.InputFiles().at(0), file_contents_);
 
-    unique_ptr<AidlDefinedType> ret;
-    std::vector<std::unique_ptr<AidlImport>> imports;
+    vector<AidlDefinedType*> defined_types;
+    vector<string> imported_files;
+    ImportResolver import_resolver{io_delegate_, {"."}, {}};
     AidlError err = ::android::aidl::internals::load_and_validate_aidl(
-        {},  // no preprocessed files
-        {"."},
-        file_path_,
-        false, // generate_traces
-        io_delegate_,
-        &types_,
-        &ret,
-        &imports);
+        options_.InputFiles().front(), options_, io_delegate_, &types_, &defined_types,
+        &imported_files);
 
     if (err != AidlError::OK) {
       return nullptr;
     }
 
-    if (ret->AsInterface() == nullptr) {
-      return nullptr;
-    }
+    EXPECT_EQ(1ul, defined_types.size());
+    EXPECT_NE(nullptr, defined_types.front()->AsInterface());
 
-    return unique_ptr<AidlInterface>(static_cast<AidlInterface*>(ret.release()));
+    return defined_types.front()->AsInterface();
   }
 
   void Compare(Document* doc, const char* expected) {
@@ -1324,7 +1417,7 @@ class ASTTest : public ::testing::Test {
     FAIL() << "Document contents did not match expected contents";
   }
 
-  const string file_path_;
+  const Options options_;
   const string file_contents_;
   FakeIoDelegate io_delegate_;
   TypeNamespace types_;
@@ -1333,7 +1426,7 @@ class ASTTest : public ::testing::Test {
 class ComplexTypeInterfaceASTTest : public ASTTest {
  public:
   ComplexTypeInterfaceASTTest()
-      : ASTTest("android/os/IComplexTypeInterface.aidl",
+      : ASTTest("aidl --lang=cpp -I . -o out android/os/IComplexTypeInterface.aidl",
                 kComplexTypeInterfaceAIDL) {
     io_delegate_.SetFileContents("foo/IFooType.aidl",
                                  "package foo; interface IFooType {}");
@@ -1341,61 +1434,68 @@ class ComplexTypeInterfaceASTTest : public ASTTest {
 };
 
 TEST_F(ComplexTypeInterfaceASTTest, GeneratesClientHeader) {
-  unique_ptr<AidlInterface> interface = ParseInterface();
+  AidlInterface* interface = ParseSingleInterface();
   ASSERT_NE(interface, nullptr);
-  unique_ptr<Document> doc = internals::BuildClientHeader(types_, *interface);
+  unique_ptr<Document> doc = internals::BuildClientHeader(types_, *interface, options_);
   Compare(doc.get(), kExpectedComplexTypeClientHeaderOutput);
 }
 
 TEST_F(ComplexTypeInterfaceASTTest, GeneratesClientSource) {
-  unique_ptr<AidlInterface> interface = ParseInterface();
+  AidlInterface* interface = ParseSingleInterface();
   ASSERT_NE(interface, nullptr);
-  unique_ptr<Document> doc = internals::BuildClientSource(types_, *interface);
+  unique_ptr<Document> doc = internals::BuildClientSource(types_, *interface, options_);
   Compare(doc.get(), kExpectedComplexTypeClientSourceOutput);
 }
 
-TEST_F(ComplexTypeInterfaceASTTest, GeneratesClientSourceWithTrace) {
-  unique_ptr<AidlInterface> interface = ParseInterface();
-  ASSERT_NE(interface, nullptr);
-  interface->SetGenerateTraces(true);
-  unique_ptr<Document> doc = internals::BuildClientSource(types_, *interface);
-  Compare(doc.get(), kExpectedComplexTypeClientWithTraceSourceOutput);
-}
-
 TEST_F(ComplexTypeInterfaceASTTest, GeneratesServerHeader) {
-  unique_ptr<AidlInterface> interface = ParseInterface();
+  AidlInterface* interface = ParseSingleInterface();
   ASSERT_NE(interface, nullptr);
-  unique_ptr<Document> doc = internals::BuildServerHeader(types_, *interface);
+  unique_ptr<Document> doc = internals::BuildServerHeader(types_, *interface, options_);
   Compare(doc.get(), kExpectedComplexTypeServerHeaderOutput);
 }
 
 TEST_F(ComplexTypeInterfaceASTTest, GeneratesServerSource) {
-  unique_ptr<AidlInterface> interface = ParseInterface();
+  AidlInterface* interface = ParseSingleInterface();
   ASSERT_NE(interface, nullptr);
-  unique_ptr<Document> doc = internals::BuildServerSource(types_, *interface);
+  unique_ptr<Document> doc = internals::BuildServerSource(types_, *interface, options_);
   Compare(doc.get(), kExpectedComplexTypeServerSourceOutput);
 }
 
-TEST_F(ComplexTypeInterfaceASTTest, GeneratesServerSourceWithTrace) {
-  unique_ptr<AidlInterface> interface = ParseInterface();
-  ASSERT_NE(interface, nullptr);
-  interface->SetGenerateTraces(true);
-  unique_ptr<Document> doc = internals::BuildServerSource(types_, *interface);
-  Compare(doc.get(), kExpectedComplexTypeServerWithTraceSourceOutput);
-}
-
 TEST_F(ComplexTypeInterfaceASTTest, GeneratesInterfaceHeader) {
-  unique_ptr<AidlInterface> interface = ParseInterface();
+  AidlInterface* interface = ParseSingleInterface();
   ASSERT_NE(interface, nullptr);
-  unique_ptr<Document> doc = internals::BuildInterfaceHeader(types_, *interface);
+  unique_ptr<Document> doc = internals::BuildInterfaceHeader(types_, *interface, options_);
   Compare(doc.get(), kExpectedComplexTypeInterfaceHeaderOutput);
 }
 
 TEST_F(ComplexTypeInterfaceASTTest, GeneratesInterfaceSource) {
-  unique_ptr<AidlInterface> interface = ParseInterface();
+  AidlInterface* interface = ParseSingleInterface();
   ASSERT_NE(interface, nullptr);
-  unique_ptr<Document> doc = internals::BuildInterfaceSource(types_, *interface);
+  unique_ptr<Document> doc = internals::BuildInterfaceSource(types_, *interface, options_);
   Compare(doc.get(), kExpectedComplexTypeInterfaceSourceOutput);
+}
+
+class ComplexTypeInterfaceASTTestWithTrace : public ASTTest {
+ public:
+  ComplexTypeInterfaceASTTestWithTrace()
+      : ASTTest("aidl --lang=cpp -t -I . -o out android/os/IComplexTypeInterface.aidl",
+                kComplexTypeInterfaceAIDL) {
+    io_delegate_.SetFileContents("foo/IFooType.aidl", "package foo; interface IFooType {}");
+  }
+};
+
+TEST_F(ComplexTypeInterfaceASTTestWithTrace, GeneratesClientSource) {
+  AidlInterface* interface = ParseSingleInterface();
+  ASSERT_NE(interface, nullptr);
+  unique_ptr<Document> doc = internals::BuildClientSource(types_, *interface, options_);
+  Compare(doc.get(), kExpectedComplexTypeClientWithTraceSourceOutput);
+}
+
+TEST_F(ComplexTypeInterfaceASTTestWithTrace, GeneratesServerSource) {
+  AidlInterface* interface = ParseSingleInterface();
+  ASSERT_NE(interface, nullptr);
+  unique_ptr<Document> doc = internals::BuildServerSource(types_, *interface, options_);
+  Compare(doc.get(), kExpectedComplexTypeServerWithTraceSourceOutput);
 }
 
 namespace test_io_handling {
@@ -1405,39 +1505,25 @@ const char kOutputPath[] = "output.cpp";
 const char kHeaderDir[] = "headers";
 const char kInterfaceHeaderRelPath[] = "a/IFoo.h";
 
+const string kCmdline = string("aidl-cpp ") + kInputPath + " " + kHeaderDir + " " + kOutputPath;
+
 }  // namespace test_io_handling
 
 class IoErrorHandlingTest : public ASTTest {
  public:
-  IoErrorHandlingTest ()
-      : ASTTest(test_io_handling::kInputPath,
-                "package a; interface IFoo {}"),
-        options_(GetOptions()) {}
-
-  const unique_ptr<CppOptions> options_;
-
- private:
-  static unique_ptr<CppOptions> GetOptions() {
-    using namespace test_io_handling;
-
-    const int argc = 4;
-    const char* cmdline[argc] = {
-      "aidl-cpp", kInputPath, kHeaderDir, kOutputPath
-    };
-    return CppOptions::Parse(argc, cmdline);
-  }
+  IoErrorHandlingTest() : ASTTest(test_io_handling::kCmdline, "package a; interface IFoo {}") {}
 };
 
 TEST_F(IoErrorHandlingTest, GenerateCorrectlyAbsentErrors) {
   // Confirm that this is working correctly without I/O problems.
-  const unique_ptr<AidlInterface> interface = ParseInterface();
+  AidlInterface* interface = ParseSingleInterface();
   ASSERT_NE(interface, nullptr);
-  ASSERT_TRUE(GenerateCpp(*options_, types_, *interface, io_delegate_));
+  ASSERT_TRUE(GenerateCpp(options_.OutputFile(), options_, types_, *interface, io_delegate_));
 }
 
 TEST_F(IoErrorHandlingTest, HandlesBadHeaderWrite) {
   using namespace test_io_handling;
-  const unique_ptr<AidlInterface> interface = ParseInterface();
+  AidlInterface* interface = ParseSingleInterface();
   ASSERT_NE(interface, nullptr);
 
   // Simulate issues closing the interface header.
@@ -1445,7 +1531,7 @@ TEST_F(IoErrorHandlingTest, HandlesBadHeaderWrite) {
       StringPrintf("%s%c%s", kHeaderDir, OS_PATH_SEPARATOR,
                    kInterfaceHeaderRelPath);
   io_delegate_.AddBrokenFilePath(header_path);
-  ASSERT_FALSE(GenerateCpp(*options_, types_, *interface, io_delegate_));
+  ASSERT_FALSE(GenerateCpp(options_.OutputFile(), options_, types_, *interface, io_delegate_));
   // We should never attempt to write the C++ file if we fail writing headers.
   ASSERT_FALSE(io_delegate_.GetWrittenContents(kOutputPath, nullptr));
   // We should remove partial results.
@@ -1454,12 +1540,12 @@ TEST_F(IoErrorHandlingTest, HandlesBadHeaderWrite) {
 
 TEST_F(IoErrorHandlingTest, HandlesBadCppWrite) {
   using test_io_handling::kOutputPath;
-  const unique_ptr<AidlInterface> interface = ParseInterface();
+  AidlInterface* interface = ParseSingleInterface();
   ASSERT_NE(interface, nullptr);
 
   // Simulate issues closing the cpp file.
   io_delegate_.AddBrokenFilePath(kOutputPath);
-  ASSERT_FALSE(GenerateCpp(*options_, types_, *interface, io_delegate_));
+  ASSERT_FALSE(GenerateCpp(options_.OutputFile(), options_, types_, *interface, io_delegate_));
   // We should remove partial results.
   ASSERT_TRUE(io_delegate_.PathWasRemoved(kOutputPath));
 }

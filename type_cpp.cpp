@@ -47,32 +47,11 @@ const char kNoValidMethod[] = "";
 Type* const kNoArrayType = nullptr;
 Type* const kNoNullableType = nullptr;
 
-bool is_cpp_keyword(const std::string& str) {
-  static const std::vector<std::string> kCppKeywords{
-    "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand", "bitor",
-    "bool", "break", "case", "catch", "char", "char16_t", "char32_t", "class",
-    "compl", "concept", "const", "constexpr", "const_cast", "continue",
-    "decltype", "default", "delete", "do", "double", "dynamic_cast", "else",
-    "enum", "explicit", "export", "extern", "false", "float", "for", "friend",
-    "goto", "if", "inline", "int", "long", "mutable", "namespace", "new",
-    "noexcept", "not", "not_eq", "nullptr", "operator", "or", "or_eq",
-    "private", "protected", "public", "register", "reinterpret_cast",
-    "requires", "return", "short", "signed", "sizeof", "static",
-    "static_assert", "static_cast", "struct", "switch", "template", "this",
-    "thread_local", "throw", "true", "try", "typedef", "typeid", "typename",
-    "union", "unsigned", "using", "virtual", "void", "volatile", "wchar_t",
-    "while", "xor", "xor_eq",
-  };
-  return std::find(kCppKeywords.begin(), kCppKeywords.end(), str) !=
-      kCppKeywords.end();
-}
-
 class VoidType : public Type {
  public:
   VoidType() : Type(ValidatableType::KIND_BUILT_IN, kNoPackage, "void",
                     {}, "void", kNoValidMethod, kNoValidMethod) {}
   virtual ~VoidType() = default;
-  bool CanBeOutParameter() const override { return false; }
   bool CanWriteToParcel() const override { return false; }
 };  // class VoidType
 
@@ -101,8 +80,6 @@ class CppArrayType : public Type {
                                     underlying_cpp_type_nulllable,
                                     read_method, write_method, true),
              src_file_name) {}
-
-  bool CanBeOutParameter() const override { return true; }
 
  private:
   static vector<string> GetHeaders(bool is_nullable, const string& cpp_header) {
@@ -191,14 +168,11 @@ class BinderType : public Type {
   }
 
  private:
-  BinderType(const AidlInterface& interface,
-             const std::string& src_file_name,
-             Type* nullable_type, const std::string& read)
-      : Type(ValidatableType::KIND_GENERATED,
-             interface.GetPackage(), interface.GetName(),
-             {GetCppHeader(interface)}, GetCppName(interface),
-             read, "writeStrongBinder", kNoArrayType, nullable_type,
-             src_file_name, interface.GetLine()),
+  BinderType(const AidlInterface& interface, const std::string& src_file_name, Type* nullable_type,
+             const std::string& read)
+      : Type(ValidatableType::KIND_GENERATED, interface.GetPackage(), interface.GetName(),
+             {GetCppHeader(interface)}, GetCppName(interface), read, "writeStrongBinder",
+             kNoArrayType, nullable_type, src_file_name),
         write_cast_(GetRawCppName(interface) + "::asBinder") {}
 
   static string GetCppName(const AidlInterface& interface) {
@@ -227,9 +201,8 @@ class NullableParcelableType : public Type {
                          const std::string& src_file_name)
       : Type(ValidatableType::KIND_PARCELABLE, parcelable.GetPackage(), parcelable.GetName(),
              {cpp_header}, GetCppName(parcelable), "readParcelable", "writeNullableParcelable",
-             kNoArrayType, kNoNullableType, src_file_name, parcelable.GetLine()) {}
+             kNoArrayType, kNoNullableType, src_file_name) {}
   virtual ~NullableParcelableType() = default;
-  bool CanBeOutParameter() const override { return true; }
 
  private:
   static string GetCppName(const AidlParcelable& parcelable) {
@@ -248,10 +221,8 @@ class ParcelableType : public Type {
                               parcelable.GetName(), cpp_header, GetCppName(parcelable),
                               GetCppName(parcelable), "readParcelableVector",
                               "writeParcelableVector", false, src_file_name),
-             new NullableParcelableType(parcelable, cpp_header, src_file_name), src_file_name,
-             parcelable.GetLine()) {}
+             new NullableParcelableType(parcelable, cpp_header, src_file_name), src_file_name) {}
   virtual ~ParcelableType() = default;
-  bool CanBeOutParameter() const override { return true; }
 
  private:
   static string GetCppName(const AidlParcelable& parcelable) {
@@ -269,7 +240,6 @@ class NullableMap : public Type {
              "::std::unique_ptr<::android::binder::Map>",
              "readNullableMap", "writeNullableMap") {}
   virtual ~NullableMap() = default;
-  bool CanBeOutParameter() const override { return true; }
 };
 
 
@@ -284,7 +254,6 @@ class MapType : public Type {
              kNoArrayType,
              new NullableMap() ) {}
   virtual ~MapType() = default;
-  bool CanBeOutParameter() const override { return true; }
 
  private:
   DISALLOW_COPY_AND_ASSIGN(MapType);
@@ -299,7 +268,6 @@ class NullableStringListType : public Type {
              "::std::unique_ptr<::std::vector<std::unique_ptr<::android::String16>>>",
              "readString16Vector", "writeString16Vector") {}
   virtual ~NullableStringListType() = default;
-  bool CanBeOutParameter() const override { return true; }
 
  private:
   DISALLOW_COPY_AND_ASSIGN(NullableStringListType);
@@ -315,7 +283,6 @@ class StringListType : public Type {
              "readString16Vector", "writeString16Vector",
              kNoArrayType, new NullableStringListType()) {}
   virtual ~StringListType() = default;
-  bool CanBeOutParameter() const override { return true; }
 
  private:
   DISALLOW_COPY_AND_ASSIGN(StringListType);
@@ -330,7 +297,6 @@ class NullableUtf8InCppStringListType : public Type {
              "::std::unique_ptr<::std::vector<std::unique_ptr<::std::string>>>",
              "readUtf8VectorFromUtf16Vector", "writeUtf8VectorAsUtf16Vector") {}
   virtual ~NullableUtf8InCppStringListType() = default;
-  bool CanBeOutParameter() const override { return true; }
 
  private:
   DISALLOW_COPY_AND_ASSIGN(NullableUtf8InCppStringListType);
@@ -346,7 +312,6 @@ class Utf8InCppStringListType : public Type {
              "readUtf8VectorFromUtf16Vector", "writeUtf8VectorAsUtf16Vector",
              kNoArrayType, new NullableUtf8InCppStringListType()) {}
   virtual ~Utf8InCppStringListType() = default;
-  bool CanBeOutParameter() const override { return true; }
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Utf8InCppStringListType);
@@ -360,7 +325,6 @@ class NullableBinderListType : public Type {
              "::std::unique_ptr<::std::vector<::android::sp<::android::IBinder>>>",
              "readStrongBinderVector", "writeStrongBinderVector") {}
   virtual ~NullableBinderListType() = default;
-  bool CanBeOutParameter() const override { return true; }
 
  private:
   DISALLOW_COPY_AND_ASSIGN(NullableBinderListType);
@@ -375,7 +339,6 @@ class BinderListType : public Type {
              "readStrongBinderVector", "writeStrongBinderVector",
              kNoArrayType, new NullableBinderListType()) {}
   virtual ~BinderListType() = default;
-  bool CanBeOutParameter() const override { return true; }
 
  private:
   DISALLOW_COPY_AND_ASSIGN(BinderListType);
@@ -506,13 +469,11 @@ void TypeNamespace::Init() {
   Add(void_type_);
 }
 
-bool TypeNamespace::AddParcelableType(const AidlParcelable& p,
-                                      const string& filename) {
+bool TypeNamespace::AddParcelableType(const AidlParcelable& p, const std::string& filename) {
   const std::string cpp_header = p.AsStructuredParcelable() ? GetCppHeader(p) : p.GetCppHeader();
 
   if (cpp_header.empty()) {
-    LOG(ERROR) << "Parcelable " << p.GetCanonicalName()
-               << " has no C++ header defined.";
+    AIDL_ERROR(p) << "Parcelable " << p.GetCanonicalName() << " has no C++ header defined.";
     return false;
   }
 
@@ -520,9 +481,8 @@ bool TypeNamespace::AddParcelableType(const AidlParcelable& p,
   return true;
 }
 
-bool TypeNamespace::AddBinderType(const AidlInterface& b,
-                                  const string& file_name) {
-  Add(new BinderType(b, file_name));
+bool TypeNamespace::AddBinderType(const AidlInterface& b, const std::string& filename) {
+  Add(new BinderType(b, filename));
   return true;
 }
 
@@ -559,36 +519,9 @@ bool TypeNamespace::AddMapType(const std::string& /* key_type_name */,
   return false;
 }
 
-bool TypeNamespace::IsValidPackage(const string& package) const {
-  if (package.empty()) {
-    return false;
-  }
-
-  auto pieces = Split(package, ".");
-  for (const string& piece : pieces) {
-    if (is_cpp_keyword(piece)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 const ValidatableType* TypeNamespace::GetArgType(const AidlArgument& a, int arg_index,
-                                                 const std::string& filename,
                                                  const AidlDefinedType& context) const {
-  const string error_prefix = StringPrintf(
-      "In file %s line %d parameter %s (%d):\n    ",
-      filename.c_str(), a.GetLine(), a.GetName().c_str(), arg_index);
-
-  // check that the name doesn't match a keyword
-  if (is_cpp_keyword(a.GetName().c_str())) {
-    cerr << error_prefix << "Argument name is a C++ keyword"
-         << endl;
-    return nullptr;
-  }
-
-  return ::android::aidl::TypeNamespace::GetArgType(a, arg_index, filename, context);
+  return ::android::aidl::TypeNamespace::GetArgType(a, arg_index, context);
 }
 
 }  // namespace cpp

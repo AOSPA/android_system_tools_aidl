@@ -708,6 +708,42 @@ public class TestServiceClient extends Activity {
       parcelable.f = kDesiredFValue;
       parcelable.shouldBeJerry = "";
 
+      if (!parcelable.stringDefaultsToFoo.equals("foo")) {
+        mLog.logAndThrow(
+            "stringDefaultsToFoo should be 'foo' but is " + parcelable.stringDefaultsToFoo);
+      }
+      if (parcelable.byteDefaultsToFour != 4) {
+        mLog.logAndThrow("byteDefaultsToFour should be 4 but is " + parcelable.byteDefaultsToFour);
+      }
+      if (parcelable.intDefaultsToFive != 5) {
+        mLog.logAndThrow("intDefaultsToFive should be 5 but is " + parcelable.intDefaultsToFive);
+      }
+      if (parcelable.longDefaultsToNegativeSeven != -7) {
+        mLog.logAndThrow("longDefaultsToNegativeSeven should be -7 but is "
+            + parcelable.longDefaultsToNegativeSeven);
+      }
+      if (!parcelable.booleanDefaultsToTrue) {
+        mLog.logAndThrow("booleanDefaultsToTrue should be true");
+      }
+      if (parcelable.charDefaultsToC != 'C') {
+        mLog.logAndThrow("charDefaultsToC is " + parcelable.charDefaultsToC);
+      }
+      if (parcelable.floatDefaultsToPi != 3.14f) {
+        mLog.logAndThrow("floatDefaultsToPi is " + parcelable.floatDefaultsToPi);
+      }
+      if (parcelable.doubleWithDefault != -3.14e17) {
+        mLog.logAndThrow(
+            "doubleWithDefault is " + parcelable.doubleWithDefault + " but should be -3.14e17");
+      }
+      if (!Arrays.equals(parcelable.arrayDefaultsTo123, new int[] {1, 2, 3})) {
+        mLog.logAndThrow("arrayDefaultsTo123 should be [1,2,3] but is "
+            + Arrays.toString(parcelable.arrayDefaultsTo123));
+      }
+      if (parcelable.arrayDefaultsToEmpty.length != 0) {
+        mLog.logAndThrow("arrayDefaultsToEmpty should be empty but is "
+            + Arrays.toString(parcelable.arrayDefaultsToEmpty));
+      }
+
       try {
         service.FillOutStructuredParcelable(parcelable);
       } catch (RemoteException ex) {
@@ -715,19 +751,44 @@ public class TestServiceClient extends Activity {
         mLog.logAndThrow("Service failed to handle structured parcelable.");
       }
 
-      if (parcelable.shouldContainThreeFs.length != 3) {
+      if (!Arrays.equals(parcelable.shouldContainThreeFs,
+              new int[] {kDesiredFValue, kDesiredFValue, kDesiredFValue})) {
         mLog.logAndThrow(
-            "shouldContainThreeFs is of length " + parcelable.shouldContainThreeFs.length);
-      }
-      for (int i = 0; i < 3; i++) {
-        if (parcelable.shouldContainThreeFs[i] != kDesiredFValue) {
-          mLog.logAndThrow("shouldContainThreeFs[" + i + "] is "
-              + parcelable.shouldContainThreeFs[i] + " but should be " + kDesiredFValue);
-        }
+            "shouldContainThreeFs is " + Arrays.toString(parcelable.shouldContainThreeFs));
       }
 
       if (!parcelable.shouldBeJerry.equals("Jerry")) {
         mLog.logAndThrow("shouldBeJerry should be 'Jerry' but is " + parcelable.shouldBeJerry);
+      }
+    }
+
+    private void checkDefaultImpl(ITestService service) throws TestFailException {
+      final int expectedArg = 100;
+      final int expectedReturnValue = 200;
+
+      boolean success = ITestService.Stub.setDefaultImpl(new ITestService.Default() {
+        @Override
+        public int UnimplementedMethod(int arg) throws RemoteException {
+          if (arg != expectedArg) {
+            throw new RemoteException("Argument for UnimplementedMethod is expected "
+                + " to be " + expectedArg + ", but got " + arg);
+          }
+          return expectedReturnValue;
+        }
+      });
+      if (!success) {
+        mLog.logAndThrow("Failed to set default impl for ITestService");
+      }
+
+      try {
+        int ret = service.UnimplementedMethod(expectedArg);
+        if (ret != expectedReturnValue) {
+          mLog.logAndThrow("Return value from UnimplementedMethod is expected "
+              + " to be " + expectedReturnValue + ", but got " + ret);
+        }
+      } catch (RemoteException ex) {
+        mLog.log(ex.toString());
+        mLog.logAndThrow("Failed to call UnimplementedMethod");
       }
     }
 
@@ -749,6 +810,7 @@ public class TestServiceClient extends Activity {
           checkUtf8Strings(service);
           checkStructuredParcelable(service);
           new NullableTests(service, mLog).runTests();
+          checkDefaultImpl(service);
 
           mLog.log(mSuccessSentinel);
         } catch (TestFailException e) {
