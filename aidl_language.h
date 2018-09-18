@@ -1,5 +1,4 @@
-#ifndef AIDL_AIDL_LANGUAGE_H_
-#define AIDL_AIDL_LANGUAGE_H_
+#pragma once
 
 #include "aidl_typenames.h"
 #include "code_writer.h"
@@ -362,6 +361,8 @@ class AidlConstantDeclaration : public AidlMember {
   const AidlConstantValue& GetValue() const { return *value_; }
   bool CheckValid() const;
 
+  std::string ToString() const;
+  std::string Signature() const;
   string ValueString(const ConstantValueDecorator& decorator) const {
     return GetValue().As(GetType(), decorator);
   }
@@ -394,7 +395,7 @@ class AidlMethod : public AidlMember {
   bool IsOneway() const { return oneway_; }
   const std::string& GetName() const { return name_; }
   bool HasId() const { return has_id_; }
-  int GetId() { return id_; }
+  int GetId() const { return id_; }
   void SetId(unsigned id) { id_ = id; }
 
   bool IsUserDefined() const { return is_user_defined_; }
@@ -639,12 +640,11 @@ class Parser {
   void SetPackage(unique_ptr<AidlQualifiedName> name) { package_ = std::move(name); }
   std::vector<std::string> Package() const;
 
-  void SetAsApiDump() { is_apidump_ = true; }
-  bool IsApiDump() const { return is_apidump_; }
-
   void DeferResolution(AidlTypeSpecifier* typespec) {
     unresolved_typespecs_.emplace_back(typespec);
   }
+
+  const vector<AidlTypeSpecifier*>& GetUnresolvedTypespecs() const { return unresolved_typespecs_; }
 
   bool Resolve();
 
@@ -668,7 +668,6 @@ class Parser {
   std::string filename_;
   std::unique_ptr<AidlQualifiedName> package_;
   AidlTypenames& typenames_;
-  bool is_apidump_ = false;
 
   void* scanner_ = nullptr;
   YY_BUFFER_STATE buffer_;
@@ -680,5 +679,3 @@ class Parser {
 
   DISALLOW_COPY_AND_ASSIGN(Parser);
 };
-
-#endif // AIDL_AIDL_LANGUAGE_H_

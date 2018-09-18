@@ -235,7 +235,11 @@ string AidlVariableDeclaration::Signature() const {
 }
 
 std::string AidlVariableDeclaration::ValueString(const ConstantValueDecorator& decorator) const {
-  return GetDefaultValue()->As(GetType(), decorator);
+  if (default_value_ != nullptr) {
+    return GetDefaultValue()->As(GetType(), decorator);
+  } else {
+    return "";
+  }
 }
 
 AidlArgument::AidlArgument(const AidlLocation& location, AidlArgument::Direction direction,
@@ -504,6 +508,15 @@ bool AidlConstantDeclaration::CheckValid() const {
   return !ValueString(AidlConstantValueDecorator).empty();
 }
 
+string AidlConstantDeclaration::ToString() const {
+  return "const " + type_->ToString() + " " + name_ + " = " +
+         ValueString(AidlConstantValueDecorator);
+}
+
+string AidlConstantDeclaration::Signature() const {
+  return type_->Signature() + " " + name_;
+}
+
 AidlMethod::AidlMethod(const AidlLocation& location, bool oneway, AidlTypeSpecifier* type,
                        const std::string& name, std::vector<std::unique_ptr<AidlArgument>>* args,
                        const std::string& comments)
@@ -544,7 +557,11 @@ string AidlMethod::ToString() const {
   for (const auto& arg : GetArguments()) {
     arg_strings.emplace_back(arg->Signature());
   }
-  return GetType().Signature() + " " + GetName() + "(" + Join(arg_strings, ", ") + ")";
+  string ret = GetType().Signature() + " " + GetName() + "(" + Join(arg_strings, ", ") + ")";
+  if (HasId()) {
+    ret += " = " + std::to_string(GetId());
+  }
+  return ret;
 }
 
 AidlDefinedType::AidlDefinedType(const AidlLocation& location, const std::string& name,
@@ -589,7 +606,7 @@ void AidlStructuredParcelable::Write(CodeWriter* writer) const {
   writer->Write("parcelable %s {\n", GetName().c_str());
   writer->Indent();
   for (const auto& field : GetFields()) {
-    writer->Write("%s;\n", field->Signature().c_str());
+    writer->Write("%s;\n", field->ToString().c_str());
   }
   writer->Dedent();
   writer->Write("}\n");
@@ -624,6 +641,9 @@ void AidlInterface::Write(CodeWriter* writer) const {
   writer->Indent();
   for (const auto& method : GetMethods()) {
     writer->Write("%s;\n", method->ToString().c_str());
+  }
+  for (const auto& constdecl : GetConstantDeclarations()) {
+    writer->Write("%s;\n", constdecl->ToString().c_str());
   }
   writer->Dedent();
   writer->Write("}\n");

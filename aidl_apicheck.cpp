@@ -99,6 +99,32 @@ static bool are_compatible_interfaces(const AidlInterface& older, const AidlInte
       }
     }
   }
+
+  map<string, AidlConstantDeclaration*> new_constdecls;
+  for (const auto& c : newer.AsInterface()->GetConstantDeclarations()) {
+    new_constdecls.emplace(c->GetName(), c.get());
+  }
+
+  for (const auto& old_c : older.AsInterface()->GetConstantDeclarations()) {
+    const auto found = new_constdecls.find(old_c->GetName());
+    if (found == new_constdecls.end()) {
+      AIDL_ERROR(old_c) << "Removed constant declaration: " << older.GetCanonicalName() << "."
+                        << old_c->GetName();
+      compatible = false;
+      continue;
+    }
+
+    const auto new_c = found->second;
+    compatible &= are_compatible_types(old_c->GetType(), new_c->GetType());
+
+    const string old_value = old_c->ValueString(AidlConstantValueDecorator);
+    const string new_value = new_c->ValueString(AidlConstantValueDecorator);
+    if (old_value != new_value) {
+      AIDL_ERROR(newer) << "Changed constant value: " << older.GetCanonicalName() << "."
+                        << old_c->GetName() << " from " << old_value << " to " << new_value << ".";
+      compatible = false;
+    }
+  }
   return compatible;
 }
 
@@ -115,14 +141,23 @@ static bool are_compatible_parcelables(const AidlStructuredParcelable& older,
 
   bool compatible = true;
   for (size_t i = 0; i < old_fields.size(); i++) {
-    compatible &= are_compatible_types(old_fields.at(i)->GetType(), new_fields.at(i)->GetType());
+    const auto& old_field = old_fields.at(i);
+    const auto& new_field = new_fields.at(i);
+    compatible &= are_compatible_types(old_field->GetType(), new_field->GetType());
 
     // Note: unlike method argument names, field name change is an incompatible
     // change, otherwise, we can't detect
     // parcelable Point {int x; int y;} -> parcelable Point {int y; int x;}
-    if (old_fields.at(i)->GetName() != new_fields.at(i)->GetName()) {
-      AIDL_ERROR(newer) << "Renamed field: " << old_fields.at(i)->GetName() << " to "
-                        << new_fields.at(i)->GetName() << ".";
+    if (old_field->GetName() != new_field->GetName()) {
+      AIDL_ERROR(newer) << "Renamed field: " << old_field->GetName() << " to "
+                        << new_field->GetName() << ".";
+      compatible = false;
+    }
+
+    const string old_value = old_field->ValueString(AidlConstantValueDecorator);
+    const string new_value = new_field->ValueString(AidlConstantValueDecorator);
+    if (old_value != new_value) {
+      AIDL_ERROR(newer) << "Changed default value: " << old_value << " to " << new_value << ".";
       compatible = false;
     }
   }
@@ -136,22 +171,40 @@ bool check_api(const Options& options, const IoDelegate& io_delegate) {
 
   java::JavaTypeNamespace old_ns;
   old_ns.Init();
-  const string old_input = options.InputFiles().at(0);
+  const string old_dir = options.InputFiles().at(0);
   vector<AidlDefinedType*> old_types;
-  if (internals::load_and_validate_aidl(old_input, options, io_delegate, &old_ns, &old_types,
-                                        nullptr /* imported_files */) != AidlError::OK) {
-    AIDL_ERROR(old_input) << "Failed to read.";
+  vector<string> old_files = io_delegate.ListFiles(old_dir);
+  if (old_files.size() == 0) {
+    AIDL_ERROR(old_dir) << "No API file exist";
     return false;
+  }
+  for (const auto& file : old_files) {
+    vector<AidlDefinedType*> types;
+    if (internals::load_and_validate_aidl(file, options, io_delegate, &old_ns, &types,
+                                          nullptr /* imported_files */) != AidlError::OK) {
+      AIDL_ERROR(file) << "Failed to read.";
+      return false;
+    }
+    old_types.insert(old_types.end(), types.begin(), types.end());
   }
 
   java::JavaTypeNamespace new_ns;
   new_ns.Init();
-  const string new_input = options.InputFiles().at(1);
+  const string new_dir = options.InputFiles().at(1);
   vector<AidlDefinedType*> new_types;
-  if (internals::load_and_validate_aidl(new_input, options, io_delegate, &new_ns, &new_types,
-                                        nullptr /* imported_files */) != AidlError::OK) {
-    AIDL_FATAL(new_input) << "Failed to read.";
+  vector<string> new_files = io_delegate.ListFiles(new_dir);
+  if (new_files.size() == 0) {
+    AIDL_ERROR(new_dir) << "No API file exist";
     return false;
+  }
+  for (const auto& file : new_files) {
+    vector<AidlDefinedType*> types;
+    if (internals::load_and_validate_aidl(file, options, io_delegate, &new_ns, &types,
+                                          nullptr /* imported_files */) != AidlError::OK) {
+      AIDL_ERROR(file) << "Failed to read.";
+      return false;
+    }
+    new_types.insert(new_types.end(), types.begin(), types.end());
   }
 
   map<string, AidlDefinedType*> new_map;

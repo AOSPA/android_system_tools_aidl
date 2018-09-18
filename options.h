@@ -13,9 +13,9 @@
  * limitations under the License.
  */
 
-#ifndef AIDL_OPTIONS_H_
-#define AIDL_OPTIONS_H_
+#pragma once
 
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -23,6 +23,7 @@
 namespace android {
 namespace aidl {
 
+using std::set;
 using std::string;
 using std::vector;
 
@@ -77,7 +78,9 @@ class Options final {
 
   Task GetTask() const { return task_; }
 
-  const vector<string>& ImportPaths() const { return import_paths_; }
+  const set<string>& ImportDirs() const { return import_dirs_; }
+
+  const set<string>& ImportFiles() const { return import_files_; }
 
   const vector<string>& PreprocessedFiles() const { return preprocessed_files_; }
 
@@ -131,7 +134,8 @@ class Options final {
   bool structured_ = false;
   Language language_ = Language::UNSPECIFIED;
   Task task_ = Task::COMPILE;
-  vector<string> import_paths_;
+  set<string> import_dirs_;
+  set<string> import_files_;
   vector<string> preprocessed_files_;
   string dependency_file_;
   bool gen_traces_ = false;
@@ -149,5 +153,3 @@ class Options final {
 
 }  // namespace android
 }  // namespace aidl
-
-#endif // AIDL_OPTIONS_H_

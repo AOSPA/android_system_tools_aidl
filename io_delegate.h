@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef AIDL_IO_DELEGATE_H_
-#define AIDL_IO_DELEGATE_H_
+#pragma once
 
 #include <android-base/macros.h>
 
@@ -56,6 +55,8 @@ class IoDelegate {
 
   virtual void RemovePath(const std::string& file_path) const;
 
+  virtual std::vector<std::string> ListFiles(const std::string& dir) const;
+
  private:
   // Create the directory when path is a dir or the parent directory when
   // path is a file. Path is a dir if it ends with the path separator.
@@ -66,5 +67,3 @@ class IoDelegate {
 
 }  // namespace android
 }  // namespace aidl
-
-#endif // AIDL_IO_DELEGATE_H_

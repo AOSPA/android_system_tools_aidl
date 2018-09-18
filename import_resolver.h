@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#ifndef AIDL_IMPORT_RESOLVER_H_
-#define AIDL_IMPORT_RESOLVER_H_
+#pragma once
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -29,7 +29,8 @@ namespace aidl {
 
 class ImportResolver {
  public:
-  ImportResolver(const IoDelegate& io_delegate, const std::vector<std::string>& import_paths,
+  ImportResolver(const IoDelegate& io_delegate, const std::string& input_file_name,
+                 const std::set<std::string>& import_paths,
                  const std::vector<std::string>& input_files);
   virtual ~ImportResolver() = default;
 
@@ -39,6 +40,7 @@ class ImportResolver {
 
  private:
   const IoDelegate& io_delegate_;
+  const std::string& input_file_name_;
   std::vector<std::string> import_paths_;
   std::vector<std::string> input_files_;
 
@@ -47,5 +49,3 @@ class ImportResolver {
 
 }  // namespace android
 }  // namespace aidl
-
-#endif // AIDL_IMPORT_RESOLVER_H_
