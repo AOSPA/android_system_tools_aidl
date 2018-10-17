@@ -54,8 +54,7 @@ aidl_interface {
     srcs: [
         "tests_1/some_package/IFoo.aidl",
         "tests_1/some_package/Thing.aidl",
-        "tests_1/some_package/sub_package/SubThing.aidl",
-        "tests_1/some_package/sub_package/IFoo.aidl",
+        "tests_1/some_package/sub_package/*.aidl",
     ],
     api_dir: "api/test-piece-1",
     versions: ["1"],
@@ -65,6 +64,7 @@ aidl_interface {
     name: "test-piece-2",
     local_include_dir: "tests_1",
     srcs: [
+        "tests_1/INoPackage.aidl",
         "tests_1/some_package/IBar.aidl",
     ],
     imports: [

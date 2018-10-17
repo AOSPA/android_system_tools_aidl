@@ -39,6 +39,7 @@
 #include "aidl_language.h"
 #include "generate_cpp.h"
 #include "generate_java.h"
+#include "generate_ndk.h"
 #include "import_resolver.h"
 #include "logging.h"
 #include "options.h"
@@ -275,7 +276,7 @@ bool write_dep_file(const Options& options, const AidlDefinedType& defined_type,
     }
   }
 
-  if (options.TargetLanguage() == Options::Language::CPP) {
+  if (options.IsCppOutput()) {
     if (!options.DependencyFileNinja()) {
       using ::android::aidl::cpp::ClassNames;
       using ::android::aidl::cpp::HeaderFile;
@@ -317,7 +318,7 @@ string generate_outputFileName(const Options& options, const AidlDefinedType& de
   result.append(name, 0, name.find('.'));
   if (options.TargetLanguage() == Options::Language::JAVA) {
     result += ".java";
-  } else if (options.TargetLanguage() == Options::Language::CPP) {
+  } else if (options.IsCppOutput()) {
     result += ".cpp";
   } else {
     LOG(FATAL) << "Should not reach here" << endl;
@@ -651,16 +652,6 @@ AidlError load_and_validate_aidl(const std::string& input_file_name, const Optio
     // be removed when the migration to AidlTypenames is done.
     defined_type->SetLanguageType(types->GetDefinedType(*defined_type));
 
-    // TODO(b/112014138): AIDL compiler has been rejecting empty package
-    // only when the target language is C++. The rejection shouldn't be based
-    // on the target language, otherwise we can't share the same AIDL across
-    // Java and C++. However, for now, let's respect the old-but-weird behavior.
-    if (options.TargetLanguage() == Options::Language::CPP) {
-      if (defined_type->GetPackage().empty()) {
-        return AidlError::BAD_PACKAGE;
-      }
-    }
-
     // Check the referenced types in parsed_doc to make sure we've imported them
     if (!is_check_api) {
       // No need to do this for check api because all typespecs are already
@@ -737,7 +728,7 @@ int compile_aidl(const Options& options, const IoDelegate& io_delegate) {
     java_types.Init();
 
     TypeNamespace* types;
-    if (lang == Options::Language::CPP) {
+    if (options.IsCppOutput()) {
       types = &cpp_types;
     } else if (lang == Options::Language::JAVA) {
       types = &java_types;
@@ -786,6 +777,10 @@ int compile_aidl(const Options& options, const IoDelegate& io_delegate) {
       if (lang == Options::Language::CPP) {
         success =
             cpp::GenerateCpp(output_file_name, options, cpp_types, *defined_type, io_delegate);
+      } else if (lang == Options::Language::NDK) {
+        ndk::GenerateNdk(output_file_name, options, cpp_types.typenames_, *defined_type,
+                         io_delegate);
+        success = true;
       } else if (lang == Options::Language::JAVA) {
         success = java::generate_java(output_file_name, input_file, defined_type, &java_types,
                                       io_delegate, options);
