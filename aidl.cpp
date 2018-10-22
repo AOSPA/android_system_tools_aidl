@@ -37,6 +37,7 @@
 #include <android-base/strings.h>
 
 #include "aidl_language.h"
+#include "aidl_typenames.h"
 #include "generate_cpp.h"
 #include "generate_java.h"
 #include "generate_ndk.h"
@@ -163,11 +164,6 @@ int check_types(const AidlStructuredParcelable* parcel, TypeNamespace* types) {
 int check_types(const AidlInterface* c, TypeNamespace* types) {
   int err = 0;
 
-  if (c->IsUtf8() && c->IsUtf8InCpp()) {
-    AIDL_ERROR(c) << "Interface cannot be marked as both @utf8 and @utf8InCpp";
-    err = 1;
-  }
-
   // Has to be a pointer due to deleting copy constructor. No idea why.
   map<string, const AidlMethod*> method_names;
   for (const auto& m : c->GetMethods()) {
@@ -194,8 +190,17 @@ int check_types(const AidlInterface* c, TypeNamespace* types) {
       err = 1;
     }
 
+    set<string> argument_names;
     int index = 1;
     for (const auto& arg : m->GetArguments()) {
+      auto it = argument_names.find(arg->GetName());
+      if (it != argument_names.end()) {
+        AIDL_ERROR(m) << "method '" << m->GetName() << "' has duplicate argument name '"
+                      << arg->GetName() << "'";
+        err = 1;
+      }
+      argument_names.insert(arg->GetName());
+
       if (!types->MaybeAddContainerType(arg->GetType())) {
         err = 1;
       }
@@ -541,7 +546,9 @@ AidlError load_and_validate_aidl(const std::string& input_file_name, const Optio
 
   set<string> type_from_import_statements;
   for (const auto& import : main_parser->GetImports()) {
-    type_from_import_statements.emplace(import->GetNeededClass());
+    if (!AidlTypenames::IsBuiltinTypename(import->GetNeededClass())) {
+      type_from_import_statements.emplace(import->GetNeededClass());
+    }
   }
 
   // When referencing a type using fully qualified name it should be imported
@@ -687,7 +694,7 @@ AidlError load_and_validate_aidl(const std::string& input_file_name, const Optio
   if (options.IsStructured()) {
     types->typenames_.IterateTypes([&](const AidlDefinedType& type) {
       if (type.AsUnstructuredParcelable() != nullptr) {
-        err = AidlError::BAD_TYPE;
+        err = AidlError::NOT_STRUCTURED;
         LOG(ERROR) << type.GetCanonicalName()
                    << " is not structured, but this is a structured interface.";
       }

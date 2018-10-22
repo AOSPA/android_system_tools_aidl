@@ -33,17 +33,19 @@ void GenerateNdkInterface(const string& output_file, const Options& options,
                           const AidlTypenames& types, const AidlInterface& defined_type,
                           const IoDelegate& io_delegate) {
   const string i_header =
-      options.OutputHeaderDir() + HeaderFile(defined_type, ClassNames::INTERFACE);
+      options.OutputHeaderDir() + NdkHeaderFile(defined_type, ClassNames::INTERFACE);
   unique_ptr<CodeWriter> i_writer(io_delegate.GetCodeWriter(i_header));
   GenerateInterfaceHeader(*i_writer, types, defined_type, options);
   CHECK(i_writer->Close());
 
-  const string bp_header = options.OutputHeaderDir() + HeaderFile(defined_type, ClassNames::CLIENT);
+  const string bp_header =
+      options.OutputHeaderDir() + NdkHeaderFile(defined_type, ClassNames::CLIENT);
   unique_ptr<CodeWriter> bp_writer(io_delegate.GetCodeWriter(bp_header));
   GenerateClientHeader(*bp_writer, types, defined_type, options);
   CHECK(bp_writer->Close());
 
-  const string bn_header = options.OutputHeaderDir() + HeaderFile(defined_type, ClassNames::SERVER);
+  const string bn_header =
+      options.OutputHeaderDir() + NdkHeaderFile(defined_type, ClassNames::SERVER);
   unique_ptr<CodeWriter> bn_writer(io_delegate.GetCodeWriter(bn_header));
   GenerateServerHeader(*bn_writer, types, defined_type, options);
   CHECK(bn_writer->Close());
@@ -56,17 +58,20 @@ void GenerateNdkInterface(const string& output_file, const Options& options,
 void GenerateNdkParcel(const string& output_file, const Options& options,
                        const AidlTypenames& types, const AidlStructuredParcelable& defined_type,
                        const IoDelegate& io_delegate) {
-  const string header_path = options.OutputHeaderDir() + HeaderFile(defined_type, ClassNames::BASE);
+  const string header_path =
+      options.OutputHeaderDir() + NdkHeaderFile(defined_type, ClassNames::BASE);
   unique_ptr<CodeWriter> header_writer(io_delegate.GetCodeWriter(header_path));
   GenerateParcelHeader(*header_writer, types, defined_type, options);
   CHECK(header_writer->Close());
 
-  const string bp_header = options.OutputHeaderDir() + HeaderFile(defined_type, ClassNames::CLIENT);
+  const string bp_header =
+      options.OutputHeaderDir() + NdkHeaderFile(defined_type, ClassNames::CLIENT);
   unique_ptr<CodeWriter> bp_writer(io_delegate.GetCodeWriter(bp_header));
   *bp_writer << "#error TODO(b/111362593) defined_types do not have bp classes\n";
   CHECK(bp_writer->Close());
 
-  const string bn_header = options.OutputHeaderDir() + HeaderFile(defined_type, ClassNames::SERVER);
+  const string bn_header =
+      options.OutputHeaderDir() + NdkHeaderFile(defined_type, ClassNames::SERVER);
   unique_ptr<CodeWriter> bn_writer(io_delegate.GetCodeWriter(bn_header));
   *bn_writer << "#error TODO(b/111362593) defined_types do not have bn classes\n";
   CHECK(bn_writer->Close());
@@ -122,10 +127,11 @@ static void GenerateHeaderIncludes(CodeWriter& out, const AidlTypenames& types,
 
     if (other_defined_type.AsInterface() != nullptr) {
       out << "#include <"
-          << HeaderFile(other_defined_type, ClassNames::INTERFACE, false /*use_os_sep*/) << ">\n";
-    } else if (other_defined_type.AsStructuredParcelable() != nullptr) {
-      out << "#include <" << HeaderFile(other_defined_type, ClassNames::BASE, false /*use_os_sep*/)
+          << NdkHeaderFile(other_defined_type, ClassNames::INTERFACE, false /*use_os_sep*/)
           << ">\n";
+    } else if (other_defined_type.AsStructuredParcelable() != nullptr) {
+      out << "#include <"
+          << NdkHeaderFile(other_defined_type, ClassNames::BASE, false /*use_os_sep*/) << ">\n";
     } else if (other_defined_type.AsParcelable() != nullptr) {
       out << "#include \"" << other_defined_type.AsParcelable()->GetCppHeader() << "\"\n";
     } else {
@@ -137,12 +143,12 @@ static void GenerateSourceIncludes(CodeWriter& out, const AidlTypenames& types,
                                    const AidlDefinedType& /*defined_type*/) {
   types.IterateTypes([&](const AidlDefinedType& a_defined_type) {
     if (a_defined_type.AsInterface() != nullptr) {
-      out << "#include <" << HeaderFile(a_defined_type, ClassNames::CLIENT, false /*use_os_sep*/)
+      out << "#include <" << NdkHeaderFile(a_defined_type, ClassNames::CLIENT, false /*use_os_sep*/)
           << ">\n";
-      out << "#include <" << HeaderFile(a_defined_type, ClassNames::SERVER, false /*use_os_sep*/)
+      out << "#include <" << NdkHeaderFile(a_defined_type, ClassNames::SERVER, false /*use_os_sep*/)
           << ">\n";
-      out << "#include <" << HeaderFile(a_defined_type, ClassNames::INTERFACE, false /*use_os_sep*/)
-          << ">\n";
+      out << "#include <"
+          << NdkHeaderFile(a_defined_type, ClassNames::INTERFACE, false /*use_os_sep*/) << ">\n";
     }
   });
 }
@@ -229,13 +235,19 @@ static void GenerateClientMethodDefinition(CodeWriter& out, const AidlTypenames&
   out << "_aidl_ret_status = AIBinder_prepareTransaction(asBinder().get(), _aidl_in.getR());\n";
   StatusCheckGoto(out);
 
-  for (const AidlArgument* arg : method.GetInArguments()) {
-    out << "_aidl_ret_status = ";
-    std::string prefix = arg->IsOut() ? "*" : "";
-    WriteToParcelFor(
-        {out, types, arg->GetType(), "_aidl_in.get()", prefix + cpp::BuildVarName(*arg)});
-    out << ";\n";
-    StatusCheckGoto(out);
+  for (const auto& arg : method.GetArguments()) {
+    const std::string var_name = cpp::BuildVarName(*arg);
+
+    if (arg->IsIn()) {
+      out << "_aidl_ret_status = ";
+      const std::string prefix = (arg->IsOut() ? "*" : "");
+      WriteToParcelFor({out, types, arg->GetType(), "_aidl_in.get()", prefix + var_name});
+      out << ";\n";
+      StatusCheckGoto(out);
+    } else if (arg->IsOut() && arg->GetType().IsArray()) {
+      out << "_aidl_ret_status = ::ndk::AParcel_writeVectorSize(_aidl_in.get(), *" << var_name
+          << ");\n";
+    }
   }
   out << "_aidl_ret_status = AIBinder_transact(\n";
   out.Indent();
@@ -254,16 +266,15 @@ static void GenerateClientMethodDefinition(CodeWriter& out, const AidlTypenames&
     out << "if (!AStatus_isOk(_aidl_status.get())) return _aidl_status;\n\n";
   }
 
-  for (const AidlArgument* arg : method.GetOutArguments()) {
-    out << "_aidl_ret_status = ";
-    ReadFromParcelFor({out, types, arg->GetType(), "_aidl_out.get()", cpp::BuildVarName(*arg)});
-    out << ";\n";
-    StatusCheckGoto(out);
-  }
-
   if (method.GetType().GetName() != "void") {
     out << "_aidl_ret_status = ";
     ReadFromParcelFor({out, types, method.GetType(), "_aidl_out.get()", "_aidl_return"});
+    out << ";\n";
+    StatusCheckGoto(out);
+  }
+  for (const AidlArgument* arg : method.GetOutArguments()) {
+    out << "_aidl_ret_status = ";
+    ReadFromParcelFor({out, types, arg->GetType(), "_aidl_out.get()", cpp::BuildVarName(*arg)});
     out << ";\n";
     StatusCheckGoto(out);
   }
@@ -289,11 +300,17 @@ static void GenerateServerCaseDefinition(CodeWriter& out, const AidlTypenames& t
   }
   out << "\n";
 
-  for (const AidlArgument* arg : method.GetInArguments()) {
-    out << "_aidl_ret_status = ";
-    ReadFromParcelFor({out, types, arg->GetType(), "_aidl_in", "&" + cpp::BuildVarName(*arg)});
-    out << ";\n";
-    StatusCheckBreak(out);
+  for (const auto& arg : method.GetArguments()) {
+    const std::string var_name = cpp::BuildVarName(*arg);
+
+    if (arg->IsIn()) {
+      out << "_aidl_ret_status = ";
+      ReadFromParcelFor({out, types, arg->GetType(), "_aidl_in", "&" + var_name});
+      out << ";\n";
+      StatusCheckBreak(out);
+    } else if (arg->IsOut() && arg->GetType().IsArray()) {
+      out << "_aidl_ret_status = ::ndk::AParcel_resizeVector(_aidl_in, &" << var_name << ");\n";
+    }
   }
 
   out << "::ndk::ScopedAStatus _aidl_status = _aidl_impl->" << method.GetName() << "("
@@ -309,15 +326,15 @@ static void GenerateServerCaseDefinition(CodeWriter& out, const AidlTypenames& t
 
     out << "if (!AStatus_isOk(_aidl_status.get())) break;\n\n";
 
-    for (const AidlArgument* arg : method.GetOutArguments()) {
-      out << "_aidl_ret_status = ";
-      WriteToParcelFor({out, types, arg->GetType(), "_aidl_out", cpp::BuildVarName(*arg)});
-      out << ";\n";
-      StatusCheckBreak(out);
-    }
     if (method.GetType().GetName() != "void") {
       out << "_aidl_ret_status = ";
       WriteToParcelFor({out, types, method.GetType(), "_aidl_out", "_aidl_return"});
+      out << ";\n";
+      StatusCheckBreak(out);
+    }
+    for (const AidlArgument* arg : method.GetOutArguments()) {
+      out << "_aidl_ret_status = ";
+      WriteToParcelFor({out, types, arg->GetType(), "_aidl_out", cpp::BuildVarName(*arg)});
       out << ";\n";
       StatusCheckBreak(out);
     }
@@ -397,7 +414,7 @@ void GenerateClientSource(CodeWriter& out, const AidlTypenames& types,
   out.Indent();
   out << "if (!AIBinder_associateClass(binder.get(), " << data_clazz
       << "::clazz)) { return nullptr; }\n";
-  out << "return std::shared_ptr<" << clazz << ">(new " << clazz << "(binder));\n";
+  out << "return (new " << clazz << "(binder))->ref<" << clazz << ">();\n";
   out.Dedent();
   out << "}\n\n";
 
@@ -474,7 +491,7 @@ void GenerateClientHeader(CodeWriter& out, const AidlTypenames& types,
   const std::string clazz = ClassName(defined_type, ClassNames::CLIENT);
 
   out << "#pragma once\n\n";
-  out << "#include \"" << HeaderFile(defined_type, ClassNames::INTERFACE, false /*use_os_sep*/)
+  out << "#include \"" << NdkHeaderFile(defined_type, ClassNames::INTERFACE, false /*use_os_sep*/)
       << "\"\n";
   out << "\n";
   out << "#include <android/binder_ibinder.h>\n";
@@ -503,7 +520,7 @@ void GenerateServerHeader(CodeWriter& out, const AidlTypenames& /*types*/,
   const std::string clazz = ClassName(defined_type, ClassNames::SERVER);
 
   out << "#pragma once\n\n";
-  out << "#include \"" << HeaderFile(defined_type, ClassNames::INTERFACE, false /*use_os_sep*/)
+  out << "#include \"" << NdkHeaderFile(defined_type, ClassNames::INTERFACE, false /*use_os_sep*/)
       << "\"\n";
   out << "\n";
   out << "#include <android/binder_ibinder.h>\n";
@@ -596,7 +613,7 @@ void GenerateParcelSource(CodeWriter& out, const AidlTypenames& types,
                           const Options& /*options*/) {
   const std::string clazz = ClassName(defined_type, ClassNames::BASE);
 
-  out << "#include \"" << HeaderFile(defined_type, ClassNames::BASE, false /*use_os_sep*/)
+  out << "#include \"" << NdkHeaderFile(defined_type, ClassNames::BASE, false /*use_os_sep*/)
       << "\"\n";
   out << "\n";
   GenerateSourceIncludes(out, types, defined_type);

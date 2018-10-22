@@ -188,12 +188,18 @@ func (g *aidlGenRule) GenerateAndroidBuildActions(ctx android.ModuleContext) {
 			strings.ToUpper(baseName)[1] == baseName[1] {
 			baseName = strings.TrimPrefix(typeName, "I")
 		}
+
+		prefix := ""
+		if g.properties.Lang == langNdk {
+			prefix = "aidl"
+		}
+
 		var headers android.WritablePaths
-		headers = append(headers, g.genHeaderDir.Join(ctx, packagePath,
+		headers = append(headers, g.genHeaderDir.Join(ctx, prefix, packagePath,
 			typeName+".h"))
-		headers = append(headers, g.genHeaderDir.Join(ctx, packagePath,
+		headers = append(headers, g.genHeaderDir.Join(ctx, prefix, packagePath,
 			"Bp"+baseName+".h"))
-		headers = append(headers, g.genHeaderDir.Join(ctx, packagePath,
+		headers = append(headers, g.genHeaderDir.Join(ctx, prefix, packagePath,
 			"Bn"+baseName+".h"))
 		ctx.ModuleBuild(pctx, android.ModuleBuildParams{
 			Rule:            aidlCppRule,
@@ -425,10 +431,6 @@ type aidlInterfaceProperties struct {
 
 	Imports []string
 
-	// Whether to generate cpp.
-	// Default: true
-	Gen_cpp *bool
-
 	// Used by gen dependency to fill out aidl include path
 	Full_import_path string `blueprint:"mutated"`
 
@@ -438,6 +440,24 @@ type aidlInterfaceProperties struct {
 	// Previous API versions that are now frozen. The version that is last in
 	// the list is considered as the most recent version.
 	Versions []string
+
+	Backend struct {
+		Java struct {
+			// Whether to generate Java code using Java binder APIs
+			// Default: true
+			Enabled *bool
+		}
+		Cpp struct {
+			// Whether to generate C++ code using C++ binder APIs
+			// Default: true
+			Enabled *bool
+		}
+		Ndk struct {
+			// Whether to generate C++ code using NDK binder APIs
+			// Default: true
+			Enabled *bool
+		}
+	}
 }
 
 type aidlInterface struct {
@@ -449,9 +469,19 @@ type aidlInterface struct {
 	rawSrcs []string
 }
 
-func (i *aidlInterface) shouldGenerateCpp() bool {
+func (i *aidlInterface) shouldGenerateJavaBackend() bool {
 	// explicitly true if not specified to give early warning to devs
-	return i.properties.Gen_cpp == nil || *i.properties.Gen_cpp
+	return i.properties.Backend.Java.Enabled == nil || *i.properties.Backend.Java.Enabled
+}
+
+func (i *aidlInterface) shouldGenerateCppBackend() bool {
+	// explicitly true if not specified to give early warning to devs
+	return i.properties.Backend.Cpp.Enabled == nil || *i.properties.Backend.Cpp.Enabled
+}
+
+func (i *aidlInterface) shouldGenerateNdkBackend() bool {
+	// explicitly true if not specified to give early warning to devs
+	return i.properties.Backend.Ndk.Enabled == nil || *i.properties.Backend.Ndk.Enabled
 }
 
 func (i *aidlInterface) checkAndUpdateSources(mctx android.LoadHookContext) {
@@ -500,8 +530,14 @@ func (i *aidlInterface) checkImports(mctx android.LoadHookContext) {
 			mctx.PropertyErrorf("imports", "Import does not exist: "+anImport)
 		}
 
-		if i.shouldGenerateCpp() && !other.shouldGenerateCpp() {
-			mctx.PropertyErrorf("imports", "Import of gen C++ module must generate C++:"+anImport)
+		if i.shouldGenerateCppBackend() && !other.shouldGenerateCppBackend() {
+			mctx.PropertyErrorf("backend.cpp.enabled",
+				"C++ backend not enabled in the imported AIDL interface %q", anImport)
+		}
+
+		if i.shouldGenerateNdkBackend() && !other.shouldGenerateNdkBackend() {
+			mctx.PropertyErrorf("backend.ndk.enabled",
+				"NDK backend not enabled in the imported AIDL interface %q", anImport)
 		}
 	}
 }
@@ -553,11 +589,16 @@ func aidlInterfaceHook(mctx android.LoadHookContext, i *aidlInterface) {
 
 	var libs []string
 
-	if i.shouldGenerateCpp() {
+	if i.shouldGenerateCppBackend() {
 		libs = append(libs, addCppLibrary(mctx, i, "", langCpp))
-		libs = append(libs, addCppLibrary(mctx, i, "", langNdk))
 		for _, version := range i.properties.Versions {
 			addCppLibrary(mctx, i, version, langCpp)
+		}
+	}
+
+	if i.shouldGenerateNdkBackend() {
+		libs = append(libs, addCppLibrary(mctx, i, "", langNdk))
+		for _, version := range i.properties.Versions {
 			addCppLibrary(mctx, i, version, langNdk)
 		}
 	}
