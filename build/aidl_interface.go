@@ -45,13 +45,13 @@ var (
 	aidlCppRule = pctx.StaticRule("aidlCppRule", blueprint.RuleParams{
 		Command: `rm -rf "${outDir}" && ` +
 			`mkdir -p "${outDir}" "${headerDir}" && ` +
-			`${aidlCmd} --lang=${lang} --structured --ninja -d ${out}.d ` +
+			`${aidlCmd} --lang=${lang} ${optionalFlags} --structured --ninja -d ${out}.d ` +
 			`-h ${headerDir} -o ${outDir} ${imports} ${in}`,
 		Depfile:     "${out}.d",
 		Deps:        blueprint.DepsGCC,
 		CommandDeps: []string{"${aidlCmd}"},
 		Description: "AIDL ${lang} ${in}",
-	}, "imports", "lang", "headerDir", "outDir")
+	}, "imports", "lang", "headerDir", "outDir", "optionalFlags")
 
 	aidlJavaRule = pctx.StaticRule("aidlJavaRule", blueprint.RuleParams{
 		Command: `rm -rf "${outDir}" && mkdir -p "${outDir}" && ` +
@@ -119,6 +119,7 @@ type aidlGenProperties struct {
 	Imports  []string
 	Lang     string // target language [java|cpp|ndk]
 	BaseName string
+	GenLog   bool
 }
 
 type aidlGenRule struct {
@@ -201,6 +202,11 @@ func (g *aidlGenRule) GenerateAndroidBuildActions(ctx android.ModuleContext) {
 			"Bp"+baseName+".h"))
 		headers = append(headers, g.genHeaderDir.Join(ctx, prefix, packagePath,
 			"Bn"+baseName+".h"))
+
+		var optionalFlags []string
+		if g.properties.GenLog {
+			optionalFlags = append(optionalFlags, "--log")
+		}
 		ctx.ModuleBuild(pctx, android.ModuleBuildParams{
 			Rule:            aidlCppRule,
 			Input:           input,
@@ -208,10 +214,11 @@ func (g *aidlGenRule) GenerateAndroidBuildActions(ctx android.ModuleContext) {
 			Outputs:         g.genOutputs,
 			ImplicitOutputs: headers,
 			Args: map[string]string{
-				"imports":   imports,
-				"lang":      g.properties.Lang,
-				"headerDir": g.genHeaderDir.String(),
-				"outDir":    outDir.String(),
+				"imports":       imports,
+				"lang":          g.properties.Lang,
+				"headerDir":     g.genHeaderDir.String(),
+				"outDir":        outDir.String(),
+				"optionalFlags": strings.Join(optionalFlags, " "),
 			},
 		})
 	}
@@ -451,6 +458,10 @@ type aidlInterfaceProperties struct {
 			// Whether to generate C++ code using C++ binder APIs
 			// Default: true
 			Enabled *bool
+			// Whether to generate additional code for gathering information
+			// about the transactions
+			// Default: false
+			Gen_log *bool
 		}
 		Ndk struct {
 			// Whether to generate C++ code using NDK binder APIs
@@ -631,6 +642,11 @@ func addCppLibrary(mctx android.LoadHookContext, i *aidlInterface, version strin
 
 	var cppGeneratedSources []string
 
+	genLog := false
+	if lang == langCpp {
+		genLog = proptools.Bool(i.properties.Backend.Cpp.Gen_log)
+	}
+
 	for idx, source := range srcs {
 		// Use idx to distinguish genrule modules. typename is not appropriate
 		// as it is possible to have identical type names in different packages.
@@ -643,6 +659,7 @@ func addCppLibrary(mctx android.LoadHookContext, i *aidlInterface, version strin
 			Imports:  concat(i.properties.Imports, []string{i.ModuleBase.Name()}),
 			Lang:     lang,
 			BaseName: i.ModuleBase.Name(),
+			GenLog:   genLog,
 		})
 		cppGeneratedSources = append(cppGeneratedSources, cppSourceGenName)
 	}
@@ -650,15 +667,21 @@ func addCppLibrary(mctx android.LoadHookContext, i *aidlInterface, version strin
 	importExportDependencies := wrap("", i.properties.Imports, "-"+lang)
 	var sdkVersion *string
 	var stl *string
+	var cpp_std *string
 
 	if lang == langCpp {
 		importExportDependencies = append(importExportDependencies, "libbinder", "libutils")
+		if genLog {
+			importExportDependencies = append(importExportDependencies, "libjsoncpp", "libbase")
+		}
 		sdkVersion = nil
 		stl = nil
+		cpp_std = nil
 	} else if lang == langNdk {
 		importExportDependencies = append(importExportDependencies, "libbinder_ndk")
 		sdkVersion = proptools.StringPtr("current")
 		stl = proptools.StringPtr("c++_shared")
+		cpp_std = proptools.StringPtr("c++17")
 	} else {
 		panic("Unrecognized language: " + lang)
 	}
@@ -675,6 +698,7 @@ func addCppLibrary(mctx android.LoadHookContext, i *aidlInterface, version strin
 		Export_shared_lib_headers: importExportDependencies,
 		Sdk_version:               sdkVersion,
 		Stl:                       stl,
+		Cpp_std:                   cpp_std,
 	}, &i.properties.VndkProperties)
 
 	return cppModuleGen

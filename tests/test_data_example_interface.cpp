@@ -44,6 +44,7 @@ import android.test.CompoundParcelable;
 import android.bar.IAuxInterface;
 import android.test.IAuxInterface2;
 
+@UnsupportedAppUsage
 interface IExampleInterface {
     const int EXAMPLE_CONSTANT = 3;
     boolean isEnabled();
@@ -51,6 +52,7 @@ interface IExampleInterface {
     String getAddress();
 
     /* Test long comment */
+    @UnsupportedAppUsage
     ExampleParcelable[] getParcelables();
 
     // Test short comment
@@ -119,6 +121,7 @@ const char kExpectedJavaOutput[] =
  * Original file: android/test/IExampleInterface.aidl
  */
 package android.test;
+@android.annotation.UnsupportedAppUsage
 public interface IExampleInterface extends android.os.IInterface
 {
   /** Default implementation for IExampleInterface. */
@@ -532,7 +535,7 @@ public interface IExampleInterface extends android.os.IInterface
         }
         return _result;
       }
-      public static android.test.IExampleInterface sDefaultImpl = null;
+      public static android.test.IExampleInterface sDefaultImpl;
     }
     static final int TRANSACTION_isEnabled = (android.os.IBinder.FIRST_CALL_TRANSACTION + 0);
     static final int TRANSACTION_getState = (android.os.IBinder.FIRST_CALL_TRANSACTION + 1);
@@ -559,6 +562,7 @@ public interface IExampleInterface extends android.os.IInterface
   public int getState() throws android.os.RemoteException;
   public java.lang.String getAddress() throws android.os.RemoteException;
   /* Test long comment */
+  @android.annotation.UnsupportedAppUsage
   public android.foo.ExampleParcelable[] getParcelables() throws android.os.RemoteException;
   // Test short comment
 
@@ -578,6 +582,7 @@ const char kExpectedJavaOutputWithTransactionNames[] =
  * Original file: android/test/IExampleInterface.aidl
  */
 package android.test;
+@android.annotation.UnsupportedAppUsage
 public interface IExampleInterface extends android.os.IInterface
 {
   /** Default implementation for IExampleInterface. */
@@ -1041,7 +1046,7 @@ public interface IExampleInterface extends android.os.IInterface
         }
         return _result;
       }
-      public static android.test.IExampleInterface sDefaultImpl = null;
+      public static android.test.IExampleInterface sDefaultImpl;
     }
     static final int TRANSACTION_isEnabled = (android.os.IBinder.FIRST_CALL_TRANSACTION + 0);
     static final int TRANSACTION_getState = (android.os.IBinder.FIRST_CALL_TRANSACTION + 1);
@@ -1068,6 +1073,7 @@ public interface IExampleInterface extends android.os.IInterface
   public int getState() throws android.os.RemoteException;
   public java.lang.String getAddress() throws android.os.RemoteException;
   /* Test long comment */
+  @android.annotation.UnsupportedAppUsage
   public android.foo.ExampleParcelable[] getParcelables() throws android.os.RemoteException;
   // Test short comment
 
@@ -1087,6 +1093,7 @@ const char kExpectedJavaOutputWithTrace[] =
  * Original file: android/test/IExampleInterface.aidl
  */
 package android.test;
+@android.annotation.UnsupportedAppUsage
 public interface IExampleInterface extends android.os.IInterface
 {
   /** Default implementation for IExampleInterface. */
@@ -1580,7 +1587,7 @@ public interface IExampleInterface extends android.os.IInterface
         }
         return _result;
       }
-      public static android.test.IExampleInterface sDefaultImpl = null;
+      public static android.test.IExampleInterface sDefaultImpl;
     }
     static final int TRANSACTION_isEnabled = (android.os.IBinder.FIRST_CALL_TRANSACTION + 0);
     static final int TRANSACTION_getState = (android.os.IBinder.FIRST_CALL_TRANSACTION + 1);
@@ -1607,6 +1614,7 @@ public interface IExampleInterface extends android.os.IInterface
   public int getState() throws android.os.RemoteException;
   public java.lang.String getAddress() throws android.os.RemoteException;
   /* Test long comment */
+  @android.annotation.UnsupportedAppUsage
   public android.foo.ExampleParcelable[] getParcelables() throws android.os.RemoteException;
   // Test short comment
 
@@ -1989,7 +1997,7 @@ public interface IExampleInterface extends android.os.IInterface
         }
         return _result;
       }
-      public static android.test.IExampleInterface sDefaultImpl = null;
+      public static android.test.IExampleInterface sDefaultImpl;
     }
     static final int TRANSACTION_isEnabled = (android.os.IBinder.FIRST_CALL_TRANSACTION + 0);
     static final int TRANSACTION_getState = (android.os.IBinder.FIRST_CALL_TRANSACTION + 1);
@@ -2510,7 +2518,7 @@ public interface IExampleInterface extends android.os.IInterface
         }
         return mCachedVersion;
       }
-      public static android.test.IExampleInterface sDefaultImpl = null;
+      public static android.test.IExampleInterface sDefaultImpl;
     }
     static final int TRANSACTION_isEnabled = (android.os.IBinder.FIRST_CALL_TRANSACTION + 0);
     static final int TRANSACTION_getState = (android.os.IBinder.FIRST_CALL_TRANSACTION + 1);

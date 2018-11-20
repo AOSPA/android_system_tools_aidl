@@ -93,11 +93,16 @@ android::aidl::java::Class* generate_parcel_class(const AidlStructuredParcelable
   parcel_class->what = Class::CLASS;
   parcel_class->type = parcelType;
   parcel_class->interfaces.push_back(types->ParcelableInterfaceType());
+  parcel_class->annotations = generate_java_annotations(*parcel);
 
   for (const auto& variable : parcel->GetFields()) {
     const Type* type = variable->GetType().GetLanguageType<Type>();
 
     std::ostringstream out;
+    out << variable->GetType().GetComments() << "\n";
+    for (const auto& a : generate_java_annotations(variable->GetType())) {
+      out << a << "\n";
+    }
     out << "public " << type->JavaType() << (variable->GetType().IsArray() ? "[]" : "") << " "
         << variable->GetName();
     if (variable->GetDefaultValue()) {
@@ -129,7 +134,7 @@ android::aidl::java::Class* generate_parcel_class(const AidlStructuredParcelable
       new Variable(new Type(types, "android.os.Parcel", 0, false), "_aidl_parcel");
 
   Method* write_method = new Method;
-  write_method->modifiers = PUBLIC | OVERRIDE;
+  write_method->modifiers = PUBLIC | OVERRIDE | FINAL;
   write_method->returnType = new Type(types, "void", 0, false);
   write_method->name = "writeToParcel";
   write_method->parameters.push_back(parcel_variable);
@@ -153,7 +158,7 @@ android::aidl::java::Class* generate_parcel_class(const AidlStructuredParcelable
   parcel_class->elements.push_back(write_method);
 
   Method* read_method = new Method;
-  read_method->modifiers = PUBLIC;
+  read_method->modifiers = PUBLIC | FINAL;
   read_method->returnType = new Type(types, "void", 0, false);
   read_method->name = "readFromParcel";
   read_method->parameters.push_back(parcel_variable);
@@ -188,6 +193,14 @@ android::aidl::java::Class* generate_parcel_class(const AidlStructuredParcelable
   parcel_class->elements.push_back(describe_contents_method);
 
   return parcel_class;
+}
+
+std::vector<std::string> generate_java_annotations(const AidlAnnotatable& a) {
+  std::vector<std::string> result;
+  if (a.IsUnsupportedAppUsage()) {
+    result.emplace_back("@android.annotation.UnsupportedAppUsage");
+  }
+  return result;
 }
 
 }  // namespace java
