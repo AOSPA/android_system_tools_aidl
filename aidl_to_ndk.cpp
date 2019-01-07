@@ -23,7 +23,6 @@
 #include <functional>
 
 using ::android::base::Join;
-using ::android::base::Split;
 
 namespace android {
 namespace aidl {
@@ -145,7 +144,12 @@ TypeInfo ParcelableTypeInfo(const AidlParcelable& type) {
                     c.writer << "(" << c.var << ").writeToParcel(" << c.parcel << ")";
                   },
           },
-      .array = nullptr,
+      .array = std::shared_ptr<TypeInfo::Aspect>(new TypeInfo::Aspect{
+          .cpp_name = "std::vector<" + clazz + ">",
+          .value_is_cheap = false,
+          .read_func = StandardRead("::ndk::AParcel_readVector"),
+          .write_func = StandardWrite("::ndk::AParcel_writeVector"),
+      }),
       .nullable = nullptr,
       .nullable_array = nullptr,
   };

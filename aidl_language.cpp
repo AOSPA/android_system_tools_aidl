@@ -71,8 +71,9 @@ AidlError::AidlError(bool fatal) : os_(std::cerr), fatal_(fatal) {
 static const string kNullable("nullable");
 static const string kUtf8InCpp("utf8InCpp");
 static const string kUnsupportedAppUsage("UnsupportedAppUsage");
+static const string kSystemApi("SystemApi");
 
-static const set<string> kAnnotationNames{kNullable, kUtf8InCpp, kUnsupportedAppUsage};
+static const set<string> kAnnotationNames{kNullable, kUtf8InCpp, kUnsupportedAppUsage, kSystemApi};
 
 AidlAnnotation* AidlAnnotation::Parse(const AidlLocation& location, const string& name) {
   if (kAnnotationNames.find(name) == kAnnotationNames.end()) {
@@ -113,6 +114,10 @@ bool AidlAnnotatable::IsUtf8InCpp() const {
 
 bool AidlAnnotatable::IsUnsupportedAppUsage() const {
   return HasAnnotation(annotations_, kUnsupportedAppUsage);
+}
+
+bool AidlAnnotatable::IsSystemApi() const {
+  return HasAnnotation(annotations_, kSystemApi);
 }
 
 string AidlAnnotatable::ToString() const {
@@ -245,7 +250,7 @@ bool AidlVariableDeclaration::CheckValid(const AidlTypenames& typenames) const {
 }
 
 string AidlVariableDeclaration::ToString() const {
-  string ret = type_->ToString() + " " + name_;
+  string ret = type_->Signature() + " " + name_;
   if (default_value_ != nullptr) {
     ret += " = " + ValueString(AidlConstantValueDecorator);
   }
@@ -580,7 +585,8 @@ string AidlMethod::ToString() const {
   for (const auto& arg : GetArguments()) {
     arg_strings.emplace_back(arg->Signature());
   }
-  string ret = GetType().Signature() + " " + GetName() + "(" + Join(arg_strings, ", ") + ")";
+  string ret = (IsOneway() ? "oneway " : "") + GetType().Signature() + " " + GetName() + "(" +
+               Join(arg_strings, ", ") + ")";
   if (HasId()) {
     ret += " = " + std::to_string(GetId());
   }
@@ -649,7 +655,7 @@ AidlInterface::AidlInterface(const AidlLocation& location, const std::string& na
                              const std::string& comments, bool oneway,
                              std::vector<std::unique_ptr<AidlMember>>* members,
                              const std::vector<std::string>& package)
-    : AidlDefinedType(location, name, comments, package), oneway_(oneway) {
+    : AidlDefinedType(location, name, comments, package) {
   for (auto& member : *members) {
     AidlMember* local = member.release();
     AidlMethod* method = local->AsMethod();
@@ -658,6 +664,7 @@ AidlInterface::AidlInterface(const AidlLocation& location, const std::string& na
     CHECK(method == nullptr || constant == nullptr);
 
     if (method) {
+      method->ApplyInterfaceOneway(oneway);
       methods_.emplace_back(method);
     } else if (constant) {
       constants_.emplace_back(constant);
@@ -686,13 +693,11 @@ bool AidlInterface::CheckValid(const AidlTypenames& typenames) const {
   // Has to be a pointer due to deleting copy constructor. No idea why.
   map<string, const AidlMethod*> method_names;
   for (const auto& m : GetMethods()) {
-    bool oneway = m->IsOneway() || IsOneway();
-
     if (!m->GetType().CheckValid(typenames)) {
       return false;
     }
 
-    if (oneway && m->GetType().GetName() != "void") {
+    if (m->IsOneway() && m->GetType().GetName() != "void") {
       AIDL_ERROR(m) << "oneway method '" << m->GetName() << "' cannot return a value";
       return false;
     }
@@ -711,7 +716,7 @@ bool AidlInterface::CheckValid(const AidlTypenames& typenames) const {
         return false;
       }
 
-      if (oneway && arg->IsOut()) {
+      if (m->IsOneway() && arg->IsOut()) {
         AIDL_ERROR(m) << "oneway method '" << m->GetName() << "' cannot have out parameters";
         return false;
       }

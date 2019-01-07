@@ -31,7 +31,6 @@
 using std::unique_ptr;
 using ::android::aidl::java::Variable;
 using std::string;
-using android::base::StringPrintf;
 
 namespace android {
 namespace aidl {
@@ -140,6 +139,12 @@ android::aidl::java::Class* generate_parcel_class(const AidlStructuredParcelable
   write_method->parameters.push_back(parcel_variable);
   write_method->parameters.push_back(flag_variable);
   write_method->statements = new StatementBlock();
+
+  out.str("");
+  out << "int _aidl_start_pos = _aidl_parcel.dataPosition();\n"
+      << "_aidl_parcel.writeInt(0);\n";
+  write_method->statements->Add(new LiteralStatement(out.str()));
+
   for (const auto& field : parcel->GetFields()) {
     string code;
     CodeWriterPtr writer = CodeWriter::ForString(&code);
@@ -155,6 +160,15 @@ android::aidl::java::Class* generate_parcel_class(const AidlStructuredParcelable
     writer->Close();
     write_method->statements->Add(new LiteralStatement(code));
   }
+
+  out.str("");
+  out << "int _aidl_end_pos = _aidl_parcel.dataPosition();\n"
+      << "_aidl_parcel.setDataPosition(_aidl_start_pos);\n"
+      << "_aidl_parcel.writeInt(_aidl_end_pos - _aidl_start_pos);\n"
+      << "_aidl_parcel.setDataPosition(_aidl_end_pos);\n";
+
+  write_method->statements->Add(new LiteralStatement(out.str()));
+
   parcel_class->elements.push_back(write_method);
 
   Method* read_method = new Method;
@@ -164,6 +178,18 @@ android::aidl::java::Class* generate_parcel_class(const AidlStructuredParcelable
   read_method->parameters.push_back(parcel_variable);
   read_method->statements = new StatementBlock();
 
+  out.str("");
+  out << "int _aidl_start_pos = _aidl_parcel.dataPosition();\n"
+      << "int _aidl_parcelable_size = _aidl_parcel.readInt();\n"
+      << "if (_aidl_parcelable_size < 0) return;\n"
+      << "try {\n";
+
+  read_method->statements->Add(new LiteralStatement(out.str()));
+
+  out.str("");
+  out << "  if (_aidl_parcel.dataPosition() - _aidl_start_pos >= _aidl_parcelable_size) return;\n";
+
+  LiteralStatement* sizeCheck = nullptr;
   // keep this across different fields in order to create the classloader
   // at most once.
   bool is_classloader_created = false;
@@ -178,10 +204,21 @@ android::aidl::java::Class* generate_parcel_class(const AidlStructuredParcelable
         .parcel = parcel_variable->name,
         .is_classloader_created = &is_classloader_created,
     };
+    context.writer.Indent();
     CreateFromParcelFor(context);
     writer->Close();
     read_method->statements->Add(new LiteralStatement(code));
+    if (!sizeCheck) sizeCheck = new LiteralStatement(out.str());
+    read_method->statements->Add(sizeCheck);
   }
+
+  out.str("");
+  out << "} finally {\n"
+      << "  _aidl_parcel.setDataPosition(_aidl_start_pos + _aidl_parcelable_size);\n"
+      << "}\n";
+
+  read_method->statements->Add(new LiteralStatement(out.str()));
+
   parcel_class->elements.push_back(read_method);
 
   Method* describe_contents_method = new Method;
@@ -189,7 +226,7 @@ android::aidl::java::Class* generate_parcel_class(const AidlStructuredParcelable
   describe_contents_method->returnType = types->IntType();
   describe_contents_method->name = "describeContents";
   describe_contents_method->statements = new StatementBlock();
-  describe_contents_method->statements->Add(new LiteralStatement("return 0;"));
+  describe_contents_method->statements->Add(new LiteralStatement("return 0;\n"));
   parcel_class->elements.push_back(describe_contents_method);
 
   return parcel_class;
@@ -199,6 +236,9 @@ std::vector<std::string> generate_java_annotations(const AidlAnnotatable& a) {
   std::vector<std::string> result;
   if (a.IsUnsupportedAppUsage()) {
     result.emplace_back("@android.annotation.UnsupportedAppUsage");
+  }
+  if (a.IsSystemApi()) {
+    result.emplace_back("@android.annotation.SystemApi");
   }
   return result;
 }
