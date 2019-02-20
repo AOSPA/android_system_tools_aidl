@@ -30,6 +30,7 @@ namespace ndk {
 static constexpr const char* kClazz = "clazz";
 static constexpr const char* kDescriptor = "descriptor";
 static constexpr const char* kVersion = "version";
+static constexpr const char* kCacheVariable = "_aidl_cached_value";
 
 using namespace internals;
 using cpp::ClassNames;
@@ -237,17 +238,27 @@ static std::string MethodId(const AidlMethod& m) {
   return "(FIRST_CALL_TRANSACTION + " + std::to_string(m.GetId()) + " /*" + m.GetName() + "*/)";
 }
 
-static void GenerateClientMethodDefinition(CodeWriter& out, const AidlTypenames& types,
-                                           const AidlInterface& defined_type,
-                                           const AidlMethod& method) {
+static void GenerateClientMethodDefinition(
+    CodeWriter& out, const AidlTypenames& types, const AidlInterface& defined_type,
+    const AidlMethod& method, const std::optional<std::string> return_value_cached_to) {
   const std::string clazz = ClassName(defined_type, ClassNames::CLIENT);
 
   out << NdkMethodDecl(types, method, clazz) << " {\n";
   out.Indent();
-  out << "::ndk::ScopedAParcel _aidl_in;\n";
-  out << "::ndk::ScopedAParcel _aidl_out;\n";
   out << "binder_status_t _aidl_ret_status = STATUS_OK;\n";
   out << "::ndk::ScopedAStatus _aidl_status;\n";
+
+  if (return_value_cached_to) {
+    out << "if (" << *return_value_cached_to << " != -1) {\n";
+    out.Indent();
+    out << "*_aidl_return = " << *return_value_cached_to << ";\n"
+        << "_aidl_status.set(AStatus_fromStatus(_aidl_ret_status));\n"
+        << "return _aidl_status;\n";
+    out.Dedent();
+    out << "}\n";
+  }
+  out << "::ndk::ScopedAParcel _aidl_in;\n";
+  out << "::ndk::ScopedAParcel _aidl_out;\n";
   out << "\n";
 
   out << "_aidl_ret_status = AIBinder_prepareTransaction(asBinder().get(), _aidl_in.getR());\n";
@@ -301,6 +312,9 @@ static void GenerateClientMethodDefinition(CodeWriter& out, const AidlTypenames&
     ReadFromParcelFor({out, types, method.GetType(), "_aidl_out.get()", "_aidl_return"});
     out << ";\n";
     StatusCheckGoto(out);
+    if (return_value_cached_to) {
+      out << *return_value_cached_to << " = *_aidl_return;\n";
+    }
   }
   for (const AidlArgument* arg : method.GetOutArguments()) {
     out << "_aidl_ret_status = ";
@@ -314,63 +328,6 @@ static void GenerateClientMethodDefinition(CodeWriter& out, const AidlTypenames&
   out << "return _aidl_status;\n";
   out.Dedent();
   out << "}\n";
-}
-
-static void GenerateClientMetaMethodDefinition(CodeWriter& out, const AidlTypenames& types,
-                                               const AidlInterface& defined_type,
-                                               const AidlMethod& method, const Options& options) {
-  CHECK(!method.IsUserDefined());
-  if (method.GetName() == kGetInterfaceVersion && options.Version() > 0) {
-    // Client-side implementation for getInterfaceVersion. The version is cached
-    // in the proxy object.
-    const std::string clazz = ClassName(defined_type, ClassNames::CLIENT);
-
-    out << NdkMethodDecl(types, method, clazz) << " {\n";
-    out.Indent();
-    out << "::ndk::ScopedAStatus _aidl_status;\n";
-    out << "binder_status_t _aidl_ret_status = STATUS_OK;\n";
-    out << "if (cached_version_ == -1) {\n";
-    out.Indent();
-    out << "::ndk::ScopedAParcel _aidl_in;\n";
-    out << "::ndk::ScopedAParcel _aidl_out;\n";
-    out << "\n";
-
-    out << "_aidl_ret_status = AIBinder_prepareTransaction(asBinder().get(), _aidl_in.getR());\n";
-    StatusCheckGoto(out);
-
-    out << "_aidl_ret_status = AIBinder_transact(\n";
-    out.Indent();
-    out << "asBinder().get(),\n";
-    out << MethodId(method) << ",\n";
-    out << "_aidl_in.getR(),\n";
-    out << "_aidl_out.getR(),\n";
-    out << "0);\n";
-    out.Dedent();
-    StatusCheckGoto(out);
-
-    out << "_aidl_ret_status = AParcel_readStatusHeader(_aidl_out.get(), _aidl_status.getR());\n";
-    StatusCheckGoto(out);
-
-    out << "if (!AStatus_isOk(_aidl_status.get())) return _aidl_status;\n\n";
-
-    out << "_aidl_ret_status = AParcel_readInt32(_aidl_out.get(), _aidl_return);\n";
-    StatusCheckGoto(out);
-
-    out << "cached_version_ = *_aidl_return;\n";
-    out << "_aidl_status.set(AStatus_fromStatus(_aidl_ret_status));\n";
-    out << "return _aidl_status;\n";
-
-    out.Dedent();
-    out << "}\n";
-
-    // Shortcut. If cached, just return it without doing the transaction.
-    out << "*_aidl_return = cached_version_;\n";
-    out << "_aidl_error:\n";
-    out << "_aidl_status.set(AStatus_fromStatus(_aidl_ret_status));\n";
-    out << "return _aidl_status;\n";
-    out.Dedent();
-    out << "}\n";
-  }
 }
 
 static void GenerateServerCaseDefinition(CodeWriter& out, const AidlTypenames& types,
@@ -510,11 +467,12 @@ void GenerateClientSource(CodeWriter& out, const AidlTypenames& types,
   out << clazz << "::~" << clazz << "() {}\n";
   out << "\n";
   for (const auto& method : defined_type.GetMethods()) {
-    if (method->IsUserDefined()) {
-      GenerateClientMethodDefinition(out, types, defined_type, *method);
-    } else {
-      GenerateClientMetaMethodDefinition(out, types, defined_type, *method, options);
-    }
+    // Only getInterfaceVersion can use cache.
+    const bool cacheable = !method->IsUserDefined() && method->GetName() == kGetInterfaceVersion &&
+                           options.Version() > 0;
+    const auto return_value_cached_to =
+        cacheable ? std::make_optional<std::string>(kCacheVariable) : std::nullopt;
+    GenerateClientMethodDefinition(out, types, defined_type, *method, return_value_cached_to);
   }
 }
 void GenerateServerSource(CodeWriter& out, const AidlTypenames& types,
@@ -687,7 +645,7 @@ void GenerateClientHeader(CodeWriter& out, const AidlTypenames& types,
   out << clazz << "(const ::ndk::SpAIBinder& binder);\n";
 
   if (options.Version() > 0) {
-    out << "int32_t cached_version_ = -1;\n";
+    out << "int32_t " << kCacheVariable << " = -1;\n";
   }
 
   out.Dedent();
