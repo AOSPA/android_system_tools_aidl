@@ -38,6 +38,7 @@
 
 #include "aidl_language.h"
 #include "aidl_typenames.h"
+#include "generate_aidl_mappings.h"
 #include "generate_cpp.h"
 #include "generate_java.h"
 #include "generate_ndk.h"
@@ -611,7 +612,11 @@ AidlError load_and_validate_aidl(const std::string& input_file_name, const Optio
     CHECK(defined_type != nullptr);
     AidlParcelable* unstructuredParcelable = defined_type->AsUnstructuredParcelable();
     if (unstructuredParcelable != nullptr) {
-      if (options.IsStructured()) {
+      if (!unstructuredParcelable->CheckValid(typenames)) {
+        return AidlError::BAD_TYPE;
+      }
+      bool isStable = unstructuredParcelable->IsStableParcelable();
+      if (options.IsStructured() && !isStable) {
         AIDL_ERROR(unstructuredParcelable)
             << "Cannot declared parcelable in a --structured interface. Parcelable must be defined "
                "in AIDL directly.";
@@ -667,7 +672,8 @@ AidlError load_and_validate_aidl(const std::string& input_file_name, const Optio
 
   if (options.IsStructured()) {
     typenames.IterateTypes([&](const AidlDefinedType& type) {
-      if (type.AsUnstructuredParcelable() != nullptr) {
+      if (type.AsUnstructuredParcelable() != nullptr &&
+          !type.AsUnstructuredParcelable()->IsStableParcelable()) {
         err = AidlError::NOT_STRUCTURED;
         LOG(ERROR) << type.GetCanonicalName()
                    << " is not structured, but this is a structured interface.";
@@ -766,6 +772,34 @@ int compile_aidl(const Options& options, const IoDelegate& io_delegate) {
     }
   }
   return 0;
+}
+
+bool dump_mappings(const Options& options, const IoDelegate& io_delegate) {
+  android::aidl::mappings::SignatureMap all_mappings;
+  for (const string& input_file : options.InputFiles()) {
+    java::JavaTypeNamespace java_types;
+    java_types.Init();
+    vector<AidlDefinedType*> defined_types;
+    vector<string> imported_files;
+
+    AidlError aidl_err = internals::load_and_validate_aidl(
+        input_file, options, io_delegate, &java_types, &defined_types, &imported_files);
+    if (aidl_err != AidlError::OK) {
+      LOG(WARNING) << "AIDL file is invalid.\n";
+      continue;
+    }
+    for (const auto defined_type : defined_types) {
+      auto mappings = mappings::generate_mappings(defined_type);
+      all_mappings.insert(mappings.begin(), mappings.end());
+    }
+  }
+  std::stringstream mappings_str;
+  for (const auto& mapping : all_mappings) {
+    mappings_str << mapping.first << "\n" << mapping.second << "\n";
+  }
+  auto code_writer = io_delegate.GetCodeWriter(options.OutputFile());
+  code_writer->Write("%s", mappings_str.str().c_str());
+  return true;
 }
 
 bool preprocess_aidl(const Options& options, const IoDelegate& io_delegate) {
