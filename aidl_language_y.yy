@@ -3,6 +3,7 @@
 #include "aidl_language_y.h"
 #include "logging.h"
 #include <set>
+#include <map>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,6 +48,8 @@ AidlLocation loc(const yy::parser::location_type& l) {
     char character;
     std::string *str;
     AidlAnnotation* annotation;
+    AidlAnnotationParameter* param;
+    std::map<std::string, std::shared_ptr<AidlConstantValue>>* param_list;
     std::vector<AidlAnnotation>* annotation_list;
     AidlTypeSpecifier* type;
     AidlArgument* arg;
@@ -99,6 +102,9 @@ AidlLocation loc(const yy::parser::location_type& l) {
 %type<parcelable> parcelable_decl
 %type<method> method_decl
 %type<constant> constant_decl
+%type<param> parameter
+%type<param_list> parameter_list
+%type<param_list> parameter_non_empty_list
 %type<annotation> annotation
 %type<annotation_list>annotation_list
 %type<type> type
@@ -111,6 +117,7 @@ AidlLocation loc(const yy::parser::location_type& l) {
 %type<constant_value> constant_value
 %type<constant_value_list> constant_value_list
 %type<constant_value_list> constant_value_non_empty_list
+%type<str> possibly_multiline_string
 
 %type<token> identifier error
 %%
@@ -272,8 +279,8 @@ constant_value
     $$ = AidlConstantValue::Hex(loc(@1), $1->GetText());
     delete $1;
   }
- | C_STR {
-    $$ = AidlConstantValue::String(loc(@1), $1->GetText());
+ | possibly_multiline_string {
+    $$ = AidlConstantValue::String(loc(@1), *$1);
     delete $1;
   }
  | '{' constant_value_list '}' {
@@ -302,6 +309,26 @@ constant_value_non_empty_list
  }
  ;
 
+ possibly_multiline_string
+ : C_STR {
+    $$ = new string($1->GetText());
+ }
+ | possibly_multiline_string '+' C_STR {
+   $$ = $1;
+   // Remove trailing " from lhs
+   if ($1->back() != '"') {
+    AIDL_ERROR(loc(@1)) << "'" << (*$1) << "' is missing a trailing quote.";
+   }
+   $1->pop_back();
+   const std::string& rhs = $3->GetText();
+   // Remove starting " from rhs
+   if (rhs.front() != '"') {
+    AIDL_ERROR(loc(@3)) << "'" << $3->GetText() << "' is missing a leading quote.";
+   }
+   $$->append(rhs.begin() + 1, rhs.end());
+   delete $3;
+ };
+
 constant_decl
  : CONST type identifier '=' constant_value ';' {
     $$ = new AidlConstantDeclaration(loc(@3), $2, $3->GetText(), $5);
@@ -314,19 +341,25 @@ method_decl
     $$ = new AidlMethod(loc(@2), false, $1, $2->GetText(), $4, $1->GetComments());
     delete $2;
   }
- | ONEWAY type identifier '(' arg_list ')' ';' {
-    $$ = new AidlMethod(loc(@3), true, $2, $3->GetText(), $5, $1->GetComments());
+ | annotation_list ONEWAY type identifier '(' arg_list ')' ';' {
+    const std::string& comments = ($1->size() > 0) ? $1->begin()->GetComments() : $2->GetComments();
+    $$ = new AidlMethod(loc(@4), true, $3, $4->GetText(), $6, comments);
+    $3->Annotate(std::move(*$1));
     delete $1;
-    delete $3;
+    delete $2;
+    delete $4;
   }
  | type identifier '(' arg_list ')' '=' INTVALUE ';' {
     $$ = new AidlMethod(loc(@2), false, $1, $2->GetText(), $4, $1->GetComments(), std::stoi($7->GetText()));
     delete $2;
   }
- | ONEWAY type identifier '(' arg_list ')' '=' INTVALUE ';' {
-    $$ = new AidlMethod(loc(@3), true, $2, $3->GetText(), $5, $1->GetComments(), std::stoi($8->GetText()));
+ | annotation_list ONEWAY type identifier '(' arg_list ')' '=' INTVALUE ';' {
+    const std::string& comments = ($1->size() > 0) ? $1->begin()->GetComments() : $2->GetComments();
+    $$ = new AidlMethod(loc(@4), true, $3, $4->GetText(), $6, comments, std::stoi($9->GetText()));
+    $3->Annotate(std::move(*$1));
     delete $1;
-    delete $3;
+    delete $2;
+    delete $4;
   };
 
 arg_list
@@ -402,15 +435,53 @@ annotation_list
     }
   };
 
+parameter
+  : identifier '=' constant_value {
+    $$ = new AidlAnnotationParameter{$1->GetText(), std::unique_ptr<AidlConstantValue>($3)};
+    delete $1;
+  };
+
+parameter_list
+  : /*empty*/{
+    $$ = new std::map<std::string, std::shared_ptr<AidlConstantValue>>();
+  }
+  | parameter_non_empty_list  {
+    $$ = $1;
+  };
+
+parameter_non_empty_list
+  : parameter {
+    $$ = new std::map<std::string, std::shared_ptr<AidlConstantValue>>();
+    $$->emplace(std::move($1->name), $1->value.release());
+    delete $1;
+  }
+  | parameter_non_empty_list ',' parameter {
+    $$ = $1;
+    if ($$->find($3->name) != $$->end()) {
+      AIDL_ERROR(loc(@3)) << "Trying to redefine parameter " << $3->name << ".";
+      ps->AddError();
+    }
+    $$->emplace(std::move($3->name), std::move($3->value));
+    delete $3;
+  };
+
 annotation
  : ANNOTATION
   {
-    $$ = AidlAnnotation::Parse(loc(@1), $1->GetText());
+    $$ = AidlAnnotation::Parse(loc(@1), $1->GetText(), nullptr);
     if ($$ == nullptr) {
       ps->AddError();
     }
     $$->SetComments($1->GetComments());
   };
+ | ANNOTATION '(' parameter_list ')' {
+    $$ = AidlAnnotation::Parse(loc(@1), $1->GetText(), $3);
+    if ($$ == nullptr) {
+      ps->AddError();
+    }
+    $$->SetComments($1->GetComments());
+    delete $3;
+ }
 
 direction
  : IN
