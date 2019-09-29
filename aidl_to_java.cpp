@@ -21,7 +21,6 @@
 
 #include <android-base/strings.h>
 
-#include <cassert>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -46,8 +45,27 @@ std::string ConstantValueDecorator(const AidlTypeSpecifier& /*type*/,
   return raw_value;
 };
 
-const string& JavaNameOf(const AidlTypeSpecifier& aidl) {
+const string& JavaNameOf(const AidlTypeSpecifier& aidl, bool instantiable = false) {
   CHECK(aidl.IsResolved()) << aidl.ToString();
+
+  if (instantiable) {
+    // An instantiable type is used in only out type(not even inout type),
+    // And instantiable type has to be either the type in List, Map, ParcelFileDescriptor or
+    // user-defined type.
+
+    static map<string, string> instantiable_m = {
+        {"List", "java.util.ArrayList"},
+        {"Map", "java.util.HashMap"},
+        {"ParcelFileDescriptor", "android.os.ParcelFileDescriptor"},
+    };
+    const string& aidl_name = aidl.GetName();
+
+    if (instantiable_m.find(aidl_name) != instantiable_m.end()) {
+      return instantiable_m[aidl_name];
+    }
+    CHECK(!AidlTypenames::IsBuiltinTypename(aidl_name));
+    return aidl_name;
+  }
 
   // map from AIDL built-in type name to the corresponding Java type name
   static map<string, string> m = {
@@ -77,19 +95,29 @@ const string& JavaNameOf(const AidlTypeSpecifier& aidl) {
   }
 }
 
-string JavaSignatureOf(const AidlTypeSpecifier& aidl) {
-  string ret = JavaNameOf(aidl);
+namespace {
+string JavaSignatureOfInternal(const AidlTypeSpecifier& aidl, bool instantiable, bool omit_array) {
+  string ret = JavaNameOf(aidl, instantiable);
   if (aidl.IsGeneric()) {
     vector<string> arg_names;
     for (const auto& ta : aidl.GetTypeParameters()) {
-      arg_names.emplace_back(JavaSignatureOf(*ta));
+      arg_names.emplace_back(JavaSignatureOfInternal(*ta, false, false));
     }
     ret += "<" + Join(arg_names, ",") + ">";
   }
-  if (aidl.IsArray()) {
+  if (aidl.IsArray() && !omit_array) {
     ret += "[]";
   }
   return ret;
+}
+}  // namespace
+
+string JavaSignatureOf(const AidlTypeSpecifier& aidl) {
+  return JavaSignatureOfInternal(aidl, false, true);
+}
+
+string InstantiableJavaSignatureOf(const AidlTypeSpecifier& aidl) {
+  return JavaSignatureOfInternal(aidl, true, true);
 }
 
 string DefaultJavaValueOf(const AidlTypeSpecifier& aidl) {
@@ -98,7 +126,7 @@ string DefaultJavaValueOf(const AidlTypeSpecifier& aidl) {
       {"long", "0L"},       {"float", "0.0f"}, {"double", "0.0d"},
   };
   const string& name = aidl.GetName();
-  assert(name != "void");
+  CHECK(name != "void");
 
   if (!aidl.IsArray() && m.find(name) != m.end()) {
     CHECK(AidlTypenames::IsBuiltinTypename(name));
