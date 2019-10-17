@@ -55,6 +55,9 @@ AidlLocation loc(const yy::parser::location_type& l) {
     AidlArgument* arg;
     AidlArgument::Direction direction;
     AidlConstantValue* constant_value;
+    AidlEnumerator* enumerator;
+    std::vector<std::unique_ptr<AidlEnumerator>>* enumerators;
+    AidlEnumDeclaration* enum_decl;
     std::vector<std::unique_ptr<AidlConstantValue>>* constant_value_list;
     std::vector<std::unique_ptr<AidlArgument>>* arg_list;
     AidlVariableDeclaration* variable;
@@ -69,12 +72,17 @@ AidlLocation loc(const yy::parser::location_type& l) {
     std::vector<std::unique_ptr<AidlTypeSpecifier>>* type_args;
 }
 
+%destructor { } <character>
+%destructor { } <direction>
+%destructor { delete ($$); } <*>
+
 %token<token> ANNOTATION "annotation"
 %token<token> C_STR "string literal"
 %token<token> IDENTIFIER "identifier"
 %token<token> INTERFACE "interface"
 %token<token> PARCELABLE "parcelable"
 %token<token> ONEWAY "oneway"
+%token<token> ENUM "enum"
 
 %token<character> CHARVALUE "char literal"
 %token<token> FLOATVALUE "float literal"
@@ -102,6 +110,9 @@ AidlLocation loc(const yy::parser::location_type& l) {
 %type<parcelable> parcelable_decl
 %type<method> method_decl
 %type<constant> constant_decl
+%type<enumerator> enumerator
+%type<enumerators> enumerators enum_decl_body
+%type<enum_decl> enum_decl
 %type<param> parameter
 %type<param_list> parameter_list
 %type<param_list> parameter_non_empty_list
@@ -190,22 +201,31 @@ unannotated_decl
   { $$ = $1; }
  | interface_decl
   { $$ = $1; }
+ | enum_decl
+  { $$ = $1; }
  ;
 
 parcelable_decl
  : PARCELABLE qualified_name ';' {
     $$ = new AidlParcelable(loc(@2), $2, ps->Package(), $1->GetComments());
+    delete $1;
   }
  | PARCELABLE qualified_name CPP_HEADER C_STR ';' {
     $$ = new AidlParcelable(loc(@2), $2, ps->Package(), $1->GetComments(), $4->GetText());
+    delete $1;
+    delete $4;
   }
  | PARCELABLE identifier '{' variable_decls '}' {
     AidlQualifiedName* name = new AidlQualifiedName(loc(@2), $2->GetText(), $2->GetComments());
     $$ = new AidlStructuredParcelable(loc(@2), name, ps->Package(), $1->GetComments(), $4);
+    delete $1;
+    delete $2;
+    delete $4;
  }
  | PARCELABLE error ';' {
     ps->AddError();
-    $$ = NULL;
+    $$ = nullptr;
+    delete $1;
   };
 
 variable_decls
@@ -222,9 +242,12 @@ variable_decls
 variable_decl
  : type identifier ';' {
    $$ = new AidlVariableDeclaration(loc(@2), $1, $2->GetText());
+   delete $2;
  }
  | type identifier '=' constant_value ';' {
+   // TODO(b/123321528): Support enum type default assignments (TestEnum foo = TestEnum.FOO).
    $$ = new AidlVariableDeclaration(loc(@2), $1, $2->GetText(),  $4);
+   delete $2;
  }
  | error ';' {
    ps->AddError();
@@ -255,14 +278,15 @@ interface_members
  :
   { $$ = new std::vector<std::unique_ptr<AidlMember>>(); }
  | interface_members method_decl
-  { $1->push_back(std::unique_ptr<AidlMember>($2)); }
+  { $1->push_back(std::unique_ptr<AidlMember>($2)); $$ = $1; }
  | interface_members constant_decl
-  { $1->push_back(std::unique_ptr<AidlMember>($2)); }
+  { $1->push_back(std::unique_ptr<AidlMember>($2)); $$ = $1; }
  | interface_members error ';' {
     ps->AddError();
     $$ = $1;
   };
 
+// TODO(b/139877950): Add support for constant expressions.
 constant_value
  : TRUE_LITERAL { $$ = AidlConstantValue::Boolean(loc(@1), true); }
  | FALSE_LITERAL { $$ = AidlConstantValue::Boolean(loc(@1), false); }
@@ -312,6 +336,7 @@ constant_value_non_empty_list
  possibly_multiline_string
  : C_STR {
     $$ = new string($1->GetText());
+    delete $1;
  }
  | possibly_multiline_string '+' C_STR {
    $$ = $1;
@@ -336,6 +361,40 @@ constant_decl
    }
  ;
 
+// TODO(b/139877950): Support autofilling enumerator values
+enumerator
+ : identifier '=' constant_value {
+    $$ = new AidlEnumerator(loc(@1), $1->GetText(), $3);
+    delete $1;
+   }
+ ;
+
+enumerators
+ : enumerator {
+    $$ = new std::vector<std::unique_ptr<AidlEnumerator>>();
+    $$->push_back(std::unique_ptr<AidlEnumerator>($1));
+   }
+ | enumerators ',' enumerator {
+    $1->push_back(std::unique_ptr<AidlEnumerator>($3));
+    $$ = $1;
+   }
+ ;
+
+enum_decl_body
+ : '{' enumerators '}' { $$ = $2; }
+ | '{' enumerators ',' '}' { $$ = $2; }
+ ;
+
+// TODO(b/123321528): Support comments.
+enum_decl
+ : ENUM identifier enum_decl_body {
+    $$ = new AidlEnumDeclaration(loc(@2), $2->GetText(), $3, ps->Package());
+    delete $1;
+    delete $2;
+    delete $3;
+   }
+ ;
+
 method_decl
  : type identifier '(' arg_list ')' ';' {
     $$ = new AidlMethod(loc(@2), false, $1, $2->GetText(), $4, $1->GetComments());
@@ -352,6 +411,7 @@ method_decl
  | type identifier '(' arg_list ')' '=' INTVALUE ';' {
     $$ = new AidlMethod(loc(@2), false, $1, $2->GetText(), $4, $1->GetComments(), std::stoi($7->GetText()));
     delete $2;
+    delete $7;
   }
  | annotation_list ONEWAY type identifier '(' arg_list ')' '=' INTVALUE ';' {
     const std::string& comments = ($1->size() > 0) ? $1->begin()->GetComments() : $2->GetComments();
@@ -360,6 +420,7 @@ method_decl
     delete $1;
     delete $2;
     delete $4;
+    delete $9;
   };
 
 arg_list
@@ -383,9 +444,7 @@ arg
     $$ = new AidlArgument(loc(@2), $1, $2->GetText());
     delete $2;
   }
- | error {
-    ps->AddError();
-  };
+ ;
 
 unannotated_type
  : qualified_name {
@@ -422,6 +481,7 @@ type_args
   }
  | type_args ',' unannotated_type {
     $1->emplace_back($3);
+    $$ = $1;
   };
 
 annotation_list
@@ -433,6 +493,7 @@ annotation_list
       $1->emplace_back(std::move(*$2));
       delete $2;
     }
+    $$ = $1;
   };
 
 parameter
@@ -473,6 +534,7 @@ annotation
       ps->AddError();
     }
     $$->SetComments($1->GetComments());
+    delete $1;
   };
  | ANNOTATION '(' parameter_list ')' {
     $$ = AidlAnnotation::Parse(loc(@1), $1->GetText(), $3);
@@ -480,6 +542,7 @@ annotation
       ps->AddError();
     }
     $$->SetComments($1->GetComments());
+    delete $1;
     delete $3;
  }
 
