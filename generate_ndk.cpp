@@ -93,27 +93,58 @@ void GenerateNdkParcelDeclaration(const std::string& filename, const IoDelegate&
   CHECK(code_writer->Close());
 }
 
+void GenerateNdkEnumDeclaration(const string& output_file, const Options& options,
+                                const AidlTypenames& types, const AidlEnumDeclaration& defined_type,
+                                const IoDelegate& io_delegate) {
+  const string header_path =
+      options.OutputHeaderDir() + NdkHeaderFile(defined_type, ClassNames::RAW);
+  unique_ptr<CodeWriter> header_writer(io_delegate.GetCodeWriter(header_path));
+  GenerateEnumHeader(*header_writer, types, defined_type, options);
+  CHECK(header_writer->Close());
+
+  const string bp_header =
+      options.OutputHeaderDir() + NdkHeaderFile(defined_type, ClassNames::CLIENT);
+  unique_ptr<CodeWriter> bp_writer(io_delegate.GetCodeWriter(bp_header));
+  *bp_writer << "#error TODO(b/111362593) enums do not have bp classes\n";
+  CHECK(bp_writer->Close());
+
+  const string bn_header =
+      options.OutputHeaderDir() + NdkHeaderFile(defined_type, ClassNames::SERVER);
+  unique_ptr<CodeWriter> bn_writer(io_delegate.GetCodeWriter(bn_header));
+  *bn_writer << "#error TODO(b/111362593) enums do not have bn classes\n";
+  CHECK(bn_writer->Close());
+
+  unique_ptr<CodeWriter> source_writer = io_delegate.GetCodeWriter(output_file);
+  *source_writer
+      << "// This file is intentionally left blank as placeholder for enum declaration.\n";
+  CHECK(source_writer->Close());
+}
+
 void GenerateNdk(const string& output_file, const Options& options, const AidlTypenames& types,
                  const AidlDefinedType& defined_type, const IoDelegate& io_delegate) {
-  const AidlStructuredParcelable* parcelable = defined_type.AsStructuredParcelable();
-  if (parcelable != nullptr) {
+  if (const AidlStructuredParcelable* parcelable = defined_type.AsStructuredParcelable();
+      parcelable != nullptr) {
     GenerateNdkParcel(output_file, options, types, *parcelable, io_delegate);
     return;
   }
 
-  const AidlParcelable* parcelable_decl = defined_type.AsParcelable();
-  if (parcelable_decl != nullptr) {
+  if (const AidlParcelable* parcelable_decl = defined_type.AsParcelable();
+      parcelable_decl != nullptr) {
     GenerateNdkParcelDeclaration(output_file, io_delegate);
     return;
   }
 
-  const AidlInterface* interface = defined_type.AsInterface();
-  if (interface != nullptr) {
+  if (const AidlEnumDeclaration* enum_decl = defined_type.AsEnumDeclaration();
+      enum_decl != nullptr) {
+    GenerateNdkEnumDeclaration(output_file, options, types, *enum_decl, io_delegate);
+    return;
+  }
+
+  if (const AidlInterface* interface = defined_type.AsInterface(); interface != nullptr) {
     GenerateNdkInterface(output_file, options, types, *interface, io_delegate);
     return;
   }
 
-  // TODO(b/123321528): Generate enums.
   CHECK(false) << "Unrecognized type sent for NDK cpp generation.";
 }
 namespace internals {
@@ -140,9 +171,9 @@ static void StatusCheckReturn(CodeWriter& out) {
 static void GenerateHeaderIncludes(CodeWriter& out, const AidlTypenames& types,
                                    const AidlDefinedType& defined_type) {
   out << "#include <android/binder_parcel_utils.h>\n";
-  out << "#ifndef __ANDROID_NDK__\n";
+  out << "#ifdef BINDER_STABILITY_SUPPORT\n";
   out << "#include <android/binder_stability.h>\n";
-  out << "#endif  // __ANDROID_NDK__\n";
+  out << "#endif  // BINDER_STABILITY_SUPPORT\n";
 
   types.IterateTypes([&](const AidlDefinedType& other_defined_type) {
     if (&other_defined_type == &defined_type) return;
@@ -155,6 +186,9 @@ static void GenerateHeaderIncludes(CodeWriter& out, const AidlTypenames& types,
           << NdkHeaderFile(other_defined_type, ClassNames::BASE, false /*use_os_sep*/) << ">\n";
     } else if (other_defined_type.AsParcelable() != nullptr) {
       out << "#include \"" << other_defined_type.AsParcelable()->GetCppHeader() << "\"\n";
+    } else if (other_defined_type.AsEnumDeclaration() != nullptr) {
+      out << "#include <"
+          << NdkHeaderFile(other_defined_type, ClassNames::BASE, false /*use_os_sep*/) << ">\n";
     } else {
       AIDL_FATAL(defined_type) << "Unrecognized type.";
     }
@@ -177,6 +211,8 @@ static void GenerateSourceIncludes(CodeWriter& out, const AidlTypenames& types,
 static void GenerateConstantDeclarations(CodeWriter& out, const AidlInterface& interface) {
   for (const auto& constant : interface.GetConstantDeclarations()) {
     const AidlConstantValue& value = constant->GetValue();
+    CHECK(value.GetType() != AidlConstantValue::Type::UNARY &&
+          value.GetType() != AidlConstantValue::Type::BINARY);
     if (value.GetType() == AidlConstantValue::Type::STRING) {
       out << "static const char* " << constant->GetName() << ";\n";
     }
@@ -186,8 +222,11 @@ static void GenerateConstantDeclarations(CodeWriter& out, const AidlInterface& i
   bool hasIntegralConstant = false;
   for (const auto& constant : interface.GetConstantDeclarations()) {
     const AidlConstantValue& value = constant->GetValue();
-    if (value.GetType() == AidlConstantValue::Type::HEXIDECIMAL ||
-        value.GetType() == AidlConstantValue::Type::INTEGRAL) {
+    CHECK(value.GetType() != AidlConstantValue::Type::UNARY &&
+          value.GetType() != AidlConstantValue::Type::BINARY);
+    if (value.GetType() == AidlConstantValue::Type::BOOLEAN ||
+        value.GetType() == AidlConstantValue::Type::INT8 ||
+        value.GetType() == AidlConstantValue::Type::INT32) {
       hasIntegralConstant = true;
       break;
     }
@@ -198,9 +237,10 @@ static void GenerateConstantDeclarations(CodeWriter& out, const AidlInterface& i
     out.Indent();
     for (const auto& constant : interface.GetConstantDeclarations()) {
       const AidlConstantValue& value = constant->GetValue();
-      if (value.GetType() == AidlConstantValue::Type::HEXIDECIMAL ||
-          value.GetType() == AidlConstantValue::Type::INTEGRAL) {
-        out << constant->GetName() << " = " << constant->ValueString(AidlConstantValueDecorator)
+      if (value.GetType() == AidlConstantValue::Type::BOOLEAN ||
+          value.GetType() == AidlConstantValue::Type::INT8 ||
+          value.GetType() == AidlConstantValue::Type::INT32) {
+        out << constant->GetName() << " = " << constant->ValueString(ConstantValueDecorator)
             << ",\n";
       }
     }
@@ -213,9 +253,11 @@ static void GenerateConstantDefinitions(CodeWriter& out, const AidlInterface& in
 
   for (const auto& constant : interface.GetConstantDeclarations()) {
     const AidlConstantValue& value = constant->GetValue();
+    CHECK(value.GetType() != AidlConstantValue::Type::UNARY &&
+          value.GetType() != AidlConstantValue::Type::BINARY);
     if (value.GetType() == AidlConstantValue::Type::STRING) {
       out << "const char* " << clazz << "::" << constant->GetName() << " = "
-          << constant->ValueString(AidlConstantValueDecorator) << ";\n";
+          << constant->ValueString(ConstantValueDecorator) << ";\n";
     }
   }
 }
@@ -290,7 +332,11 @@ static void GenerateClientMethodDefinition(CodeWriter& out, const AidlTypenames&
   out << MethodId(method) << ",\n";
   out << "_aidl_in.getR(),\n";
   out << "_aidl_out.getR(),\n";
-  out << (method.IsOneway() ? "FLAG_ONEWAY" : "0") << ");\n";
+  out << (method.IsOneway() ? "FLAG_ONEWAY" : "0") << "\n";
+  out << "#ifdef BINDER_STABILITY_SUPPORT\n";
+  out << "| FLAG_PRIVATE_LOCAL\n";
+  out << "#endif  // BINDER_STABILITY_SUPPORT\n";
+  out << ");\n";
   out.Dedent();
 
   // If the method is not implmented in the server side but the client has
@@ -438,7 +484,7 @@ void GenerateClassSource(CodeWriter& out, const AidlTypenames& types,
   }
   out << "return _aidl_ret_status;\n";
   out.Dedent();
-  out << "};\n\n";
+  out << "}\n\n";
 
   out << "static AIBinder_Class* " << kClazz << " = ::ndk::ICInterface::defineClass(" << clazz
       << "::" << kDescriptor << ", _aidl_onTransact);\n\n";
@@ -478,13 +524,13 @@ void GenerateServerSource(CodeWriter& out, const AidlTypenames& types,
   out.Indent();
   out << "AIBinder* binder = AIBinder_new(" << kClazz << ", static_cast<void*>(this));\n";
 
-  out << "#ifndef __ANDROID_NDK__\n";
+  out << "#ifdef BINDER_STABILITY_SUPPORT\n";
   if (defined_type.IsVintfStability()) {
     out << "AIBinder_markVintfStability(binder);\n";
   } else {
     out << "AIBinder_markCompilationUnitStability(binder);\n";
   }
-  out << "#endif  // __ANDROID_NDK__\n";
+  out << "#endif  // BINDER_STABILITY_SUPPORT\n";
 
   out << "return ::ndk::SpAIBinder(binder);\n";
   out.Dedent();
@@ -786,7 +832,7 @@ void GenerateParcelHeader(CodeWriter& out, const AidlTypenames& types,
   for (const auto& variable : defined_type.GetFields()) {
     out << NdkNameOf(types, variable->GetType(), StorageMode::STACK) << " " << variable->GetName();
     if (variable->GetDefaultValue()) {
-      out << " = " << variable->ValueString(AidlConstantValueDecorator);
+      out << " = " << variable->ValueString(ConstantValueDecorator);
     }
     out << ";\n";
   }
@@ -873,6 +919,27 @@ void GenerateParcelSource(CodeWriter& out, const AidlTypenames& types,
   out << "\n";
   LeaveNdkNamespace(out, defined_type);
 }
+
+void GenerateEnumHeader(CodeWriter& out, const AidlTypenames& types,
+                        const AidlEnumDeclaration& enum_decl, const Options& /*options*/) {
+  out << "#pragma once\n";
+  out << "\n";
+
+  GenerateHeaderIncludes(out, types, enum_decl);
+
+  EnterNdkNamespace(out, enum_decl);
+  out << "enum class " << enum_decl.GetName() << " : "
+      << NdkNameOf(types, enum_decl.GetBackingType(), StorageMode::STACK) << " {\n";
+  out.Indent();
+  for (const auto& enumerator : enum_decl.GetEnumerators()) {
+    out << enumerator->GetName() << " = "
+        << enumerator->ValueString(enum_decl.GetBackingType(), ConstantValueDecorator) << ",\n";
+  }
+  out.Dedent();
+  out << "};\n";
+  LeaveNdkNamespace(out, enum_decl);
+}
+
 }  // namespace internals
 }  // namespace ndk
 }  // namespace aidl

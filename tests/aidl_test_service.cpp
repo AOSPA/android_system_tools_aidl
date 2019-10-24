@@ -64,7 +64,11 @@ using android::binder::Status;
 // Generated code:
 using android::aidl::tests::BnNamedCallback;
 using android::aidl::tests::BnTestService;
+using android::aidl::tests::ByteEnum;
+using android::aidl::tests::ConstantExpressionEnum;
 using android::aidl::tests::INamedCallback;
+using android::aidl::tests::IntEnum;
+using android::aidl::tests::LongEnum;
 using android::aidl::tests::SimpleParcelable;
 using android::os::ParcelFileDescriptor;
 using android::os::PersistableBundle;
@@ -158,6 +162,21 @@ class NativeService : public BnTestService {
     *_aidl_return = token;
     return Status::ok();
   }
+  Status RepeatByteEnum(ByteEnum token, ByteEnum* _aidl_return) override {
+    ALOGI("Repeating ByteEnum token %d", static_cast<int8_t>(token));
+    *_aidl_return = token;
+    return Status::ok();
+  }
+  Status RepeatIntEnum(IntEnum token, IntEnum* _aidl_return) override {
+    ALOGI("Repeating IntEnum token %d", static_cast<int8_t>(token));
+    *_aidl_return = token;
+    return Status::ok();
+  }
+  Status RepeatLongEnum(LongEnum token, LongEnum* _aidl_return) override {
+    ALOGI("Repeating LongEnum token %d", static_cast<int8_t>(token));
+    *_aidl_return = token;
+    return Status::ok();
+  }
 
   Status RepeatSimpleParcelable(const SimpleParcelable& input,
                                 SimpleParcelable* repeat,
@@ -236,6 +255,18 @@ class NativeService : public BnTestService {
   Status ReverseString(const vector<String16>& input,
                        vector<String16>* repeated,
                        vector<String16>* _aidl_return) override {
+    return ReverseArray(input, repeated, _aidl_return);
+  }
+  Status ReverseByteEnum(const vector<ByteEnum>& input, vector<ByteEnum>* repeated,
+                         vector<ByteEnum>* _aidl_return) override {
+    return ReverseArray(input, repeated, _aidl_return);
+  }
+  Status ReverseIntEnum(const vector<IntEnum>& input, vector<IntEnum>* repeated,
+                        vector<IntEnum>* _aidl_return) override {
+    return ReverseArray(input, repeated, _aidl_return);
+  }
+  Status ReverseLongEnum(const vector<LongEnum>& input, vector<LongEnum>* repeated,
+                         vector<LongEnum>* _aidl_return) override {
     return ReverseArray(input, repeated, _aidl_return);
   }
   Status ReverseSimpleParcelables(
@@ -332,6 +363,21 @@ class NativeService : public BnTestService {
 
   Status RepeatNullableIntArray(const unique_ptr<vector<int32_t>>& input,
                                 unique_ptr<vector<int32_t>>* _aidl_return) {
+    return RepeatNullable(input, _aidl_return);
+  }
+
+  Status RepeatNullableByteEnumArray(const unique_ptr<vector<ByteEnum>>& input,
+                                     unique_ptr<vector<ByteEnum>>* _aidl_return) {
+    return RepeatNullable(input, _aidl_return);
+  }
+
+  Status RepeatNullableIntEnumArray(const unique_ptr<vector<IntEnum>>& input,
+                                    unique_ptr<vector<IntEnum>>* _aidl_return) {
+    return RepeatNullable(input, _aidl_return);
+  }
+
+  Status RepeatNullableLongEnumArray(const unique_ptr<vector<LongEnum>>& input,
+                                     unique_ptr<vector<LongEnum>>* _aidl_return) {
     return RepeatNullable(input, _aidl_return);
   }
 
@@ -453,6 +499,24 @@ class NativeService : public BnTestService {
       ::android::aidl::tests::StructuredParcelable* parcelable) {
     parcelable->shouldBeJerry = "Jerry";
     parcelable->shouldContainThreeFs = {parcelable->f, parcelable->f, parcelable->f};
+    parcelable->shouldBeByteBar = ByteEnum::BAR;
+    parcelable->shouldBeIntBar = IntEnum::BAR;
+    parcelable->shouldBeLongBar = LongEnum::BAR;
+    parcelable->shouldContainTwoByteFoos = {ByteEnum::FOO, ByteEnum::FOO};
+    parcelable->shouldContainTwoIntFoos = {IntEnum::FOO, IntEnum::FOO};
+    parcelable->shouldContainTwoLongFoos = {LongEnum::FOO, LongEnum::FOO};
+
+    parcelable->const_exprs_1 = ConstantExpressionEnum::decInt32_1;
+    parcelable->const_exprs_2 = ConstantExpressionEnum::decInt32_2;
+    parcelable->const_exprs_3 = ConstantExpressionEnum::decInt64_1;
+    parcelable->const_exprs_4 = ConstantExpressionEnum::decInt64_2;
+    parcelable->const_exprs_5 = ConstantExpressionEnum::decInt64_3;
+    parcelable->const_exprs_6 = ConstantExpressionEnum::decInt64_4;
+    parcelable->const_exprs_7 = ConstantExpressionEnum::hexInt32_1;
+    parcelable->const_exprs_8 = ConstantExpressionEnum::hexInt32_2;
+    parcelable->const_exprs_9 = ConstantExpressionEnum::hexInt32_3;
+    parcelable->const_exprs_10 = ConstantExpressionEnum::hexInt64_1;
+
     return Status::ok();
   }
 
@@ -462,7 +526,7 @@ class NativeService : public BnTestService {
 
   android::status_t onTransact(uint32_t code, const Parcel& data, Parcel* reply,
                                uint32_t flags) override {
-    if (code == ::android::IBinder::FIRST_CALL_TRANSACTION + 44 /* UnimplementedMethod */) {
+    if (code == ::android::IBinder::FIRST_CALL_TRANSACTION + 53 /* UnimplementedMethod */) {
       // pretend that UnimplementedMethod isn't implemented by this service.
       return android::UNKNOWN_TRANSACTION;
     } else {

@@ -107,9 +107,14 @@ ArgList BuildArgList(const AidlTypenames& typenames, const AidlMethod& method, b
       if (a->IsOut()) {
         literal = literal + "*";
       } else {
+        const auto definedType = typenames.TryGetDefinedType(a->GetType().GetName());
+
+        const bool isEnum = definedType && definedType->AsEnumDeclaration() != nullptr;
+        const bool isPrimitive = AidlTypenames::IsPrimitiveTypename(a->GetType().GetName());
+
         // We pass in parameters that are not primitives by const reference.
         // Arrays of primitives are not primitives.
-        if (!AidlTypenames::IsPrimitiveTypename(a->GetType().GetName()) || a->GetType().IsArray()) {
+        if (!(isPrimitive || isEnum) || a->GetType().IsArray()) {
           literal = "const " + literal + "&";
         }
       }
@@ -259,17 +264,17 @@ unique_ptr<Declaration> DefineClientTransaction(const AidlTypenames& typenames,
   b->AddStatement(GotoErrorOnBadStatus());
 
   for (const auto& a: method.GetArguments()) {
-    string var_name = ((a->IsOut()) ? "*" : "") + a->GetName();
-    var_name = ParcelWriteCastOf(a->GetType(), typenames, var_name);
+    const string var_name = ((a->IsOut()) ? "*" : "") + a->GetName();
 
     if (a->IsIn()) {
       // Serialization looks roughly like:
       //     _aidl_ret_status = _aidl_data.WriteInt32(in_param_name);
       //     if (_aidl_ret_status != ::android::OK) { goto error; }
       const string& method = ParcelWriteMethodOf(a->GetType(), typenames);
-      b->AddStatement(new Assignment(
-          kAndroidStatusVarName,
-          new MethodCall(StringPrintf("%s.%s", kDataVarName, method.c_str()), var_name)));
+      b->AddStatement(
+          new Assignment(kAndroidStatusVarName,
+                         new MethodCall(StringPrintf("%s.%s", kDataVarName, method.c_str()),
+                                        ParcelWriteCastOf(a->GetType(), typenames, var_name))));
       b->AddStatement(GotoErrorOnBadStatus());
     } else if (a->IsOut() && a->GetType().IsArray()) {
       // Special case, the length of the out array is written into the parcel.
@@ -498,12 +503,13 @@ bool HandleServerTransaction(const AidlTypenames& typenames, const AidlInterface
     // Deserialization looks roughly like:
     //     _aidl_ret_status = _aidl_data.ReadInt32(&in_param_name);
     //     if (_aidl_ret_status != ::android::OK) { break; }
-    const string& var_name = ParcelReadCastOf(a->GetType(), typenames, "&" + BuildVarName(*a));
+    const string& var_name = "&" + BuildVarName(*a);
     if (a->IsIn()) {
       const string& readMethod = ParcelReadMethodOf(a->GetType(), typenames);
       b->AddStatement(
           new Assignment{kAndroidStatusVarName,
-                         new MethodCall{string(kDataVarName) + "." + readMethod, var_name}});
+                         new MethodCall{string(kDataVarName) + "." + readMethod,
+                                        ParcelReadCastOf(a->GetType(), typenames, var_name)}});
       b->AddStatement(BreakOnStatusNotOk());
     } else if (a->IsOut() && a->GetType().IsArray()) {
       // Special case, the length of the out array is written into the parcel.
@@ -926,8 +932,9 @@ unique_ptr<Document> BuildInterfaceHeader(const AidlTypenames& typenames,
         string_constants.push_back(std::move(getter));
         break;
       }
-      case AidlConstantValue::Type::INTEGRAL:
-      case AidlConstantValue::Type::HEXIDECIMAL: {
+      case AidlConstantValue::Type::BOOLEAN:  // fall-through
+      case AidlConstantValue::Type::INT8:     // fall-through
+      case AidlConstantValue::Type::INT32: {
         int_constant_enum->AddValue(constant->GetName(),
                                     constant->ValueString(ConstantValueDecorator));
         break;
@@ -998,10 +1005,31 @@ std::unique_ptr<Document> BuildParcelHeader(const AidlTypenames& typenames,
   unique_ptr<ClassDecl> parcel_class{new ClassDecl{parcel.GetName(), "::android::Parcelable"}};
 
   set<string> includes = {kStatusHeader, kParcelHeader};
+  includes.insert("tuple");
   for (const auto& variable : parcel.GetFields()) {
     AddHeaders(variable->GetType(), typenames, includes);
   }
 
+  set<string> operators = {"<", ">", "==", ">=", "<=", "!="};
+  for (const auto& op : operators) {
+    std::ostringstream operator_code;
+    std::vector<std::string> variable_name;
+    std::vector<std::string> rhs_variable_name;
+    for (const auto& variable : parcel.GetFields()) {
+      variable_name.push_back(variable->GetName());
+      rhs_variable_name.push_back("rhs." + variable->GetName());
+    }
+
+    operator_code << "inline bool operator" << op << "(const " << parcel.GetName()
+                  << "& rhs) const {\n"
+                  << "  return "
+                  << "std::tie(" << Join(variable_name, ", ") << ")" << op << "std::tie("
+                  << Join(rhs_variable_name, ", ") << ")"
+                  << ";\n"
+                  << "}\n";
+
+    parcel_class->AddPublic(std::unique_ptr<LiteralDecl>(new LiteralDecl(operator_code.str())));
+  }
   for (const auto& variable : parcel.GetFields()) {
 
     std::ostringstream out;
