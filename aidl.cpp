@@ -173,7 +173,14 @@ bool write_dep_file(const Options& options, const AidlDefinedType& defined_type,
   }
 
   // Encode that the output file depends on aidl input files.
-  writer->Write("%s : \\\n", output_file.c_str());
+  if (defined_type.AsUnstructuredParcelable() != nullptr &&
+      options.TargetLanguage() == Options::Language::JAVA) {
+    // Legacy behavior. For parcelable declarations in Java, don't emit output file as
+    // the dependency target. b/141372861
+    writer->Write(" : \\\n");
+  } else {
+    writer->Write("%s : \\\n", output_file.c_str());
+  }
   writer->Write("  %s", Join(source_aidl, " \\\n  ").c_str());
   writer->Write("\n");
 
@@ -521,12 +528,14 @@ AidlError load_and_validate_aidl(const std::string& input_file_name, const Optio
       // because other types that may use enums, such as Interface or
       // StructuredParcelable, need to know the enum BackingType when
       // generating code.
-      if (auto backing_type = enum_decl->BackingType(); backing_type != nullptr) {
+      if (auto backing_type = enum_decl->BackingType(*typenames); backing_type != nullptr) {
         enum_decl->SetBackingType(std::unique_ptr<const AidlTypeSpecifier>(backing_type));
       } else {
         // Default to byte type for enums.
-        enum_decl->SetBackingType(std::make_unique<const AidlTypeSpecifier>(
-            AIDL_LOCATION_HERE, "byte", false, nullptr, ""));
+        auto byte_type =
+            std::make_unique<AidlTypeSpecifier>(AIDL_LOCATION_HERE, "byte", false, nullptr, "");
+        byte_type->Resolve(*typenames);
+        enum_decl->SetBackingType(std::move(byte_type));
       }
 
       // TODO(b/139877950): Support autofilling enumerators, and ensure that
@@ -620,15 +629,31 @@ AidlError load_and_validate_aidl(const std::string& input_file_name, const Optio
       if (!check_and_assign_method_ids(interface->GetMethods())) {
         return AidlError::BAD_METHOD_ID;
       }
-    }
 
-    if (enum_decl != nullptr) {
-      if (!is_check_api && (options.TargetLanguage() == Options::Language::NDK ||
-                            options.TargetLanguage() == Options::Language::JAVA)) {
-        AIDL_ERROR(defined_type) << "Enums are not yet supported in Java or NDK. "
-                                 << "Please set \"backend: { java: { enabled: false }, "
-                                 << "ndk: { enabled: false },},\" if you want to use Enums.";
-        return AidlError::BAD_TYPE;
+      // Verify and resolve the constant declarations
+      for (const auto& constant : interface->GetConstantDeclarations()) {
+        switch (constant->GetValue().GetType()) {
+          case AidlConstantValue::Type::STRING:    // fall-through
+          case AidlConstantValue::Type::INT8:      // fall-through
+          case AidlConstantValue::Type::INT32:     // fall-through
+          case AidlConstantValue::Type::INT64:     // fall-through
+          case AidlConstantValue::Type::FLOATING:  // fall-through
+          case AidlConstantValue::Type::UNARY:     // fall-through
+          case AidlConstantValue::Type::BINARY: {
+            bool success = constant->CheckValid(*typenames);
+            if (!success) {
+              return AidlError::BAD_TYPE;
+            }
+            if (constant->ValueString(cpp::ConstantValueDecorator).empty()) {
+              return AidlError::BAD_TYPE;
+            }
+            break;
+          }
+          default:
+            LOG(FATAL) << "Unrecognized constant type: "
+                       << static_cast<int>(constant->GetValue().GetType());
+            break;
+        }
       }
     }
   }
@@ -709,8 +734,13 @@ int compile_aidl(const Options& options, const IoDelegate& io_delegate) {
         ndk::GenerateNdk(output_file_name, options, typenames, *defined_type, io_delegate);
         success = true;
       } else if (lang == Options::Language::JAVA) {
-        success =
-            java::generate_java(output_file_name, defined_type, typenames, io_delegate, options);
+        if (defined_type->AsUnstructuredParcelable() != nullptr) {
+          // Legacy behavior. For parcelable declarations in Java, don't generate output file.
+          success = true;
+        } else {
+          success =
+              java::generate_java(output_file_name, defined_type, typenames, io_delegate, options);
+        }
       } else {
         LOG(FATAL) << "Should not reach here" << endl;
         return 1;
@@ -737,7 +767,7 @@ bool dump_mappings(const Options& options, const IoDelegate& io_delegate) {
       continue;
     }
     for (const auto defined_type : defined_types) {
-      auto mappings = mappings::generate_mappings(defined_type);
+      auto mappings = mappings::generate_mappings(defined_type, typenames);
       all_mappings.insert(mappings.begin(), mappings.end());
     }
   }
