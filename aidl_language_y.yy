@@ -158,7 +158,7 @@ AidlLocation loc(const yy::parser::location_type& l) {
 %type<annotation_list>annotation_list
 %type<type> type
 %type<type> unannotated_type
-%type<arg_list> arg_list
+%type<arg_list> arg_list arg_non_empty_list
 %type<arg> arg
 %type<direction> direction
 %type<type_args> type_args
@@ -212,10 +212,14 @@ qualified_name
 
 decls
  : decl {
-    ps->AddDefinedType(unique_ptr<AidlDefinedType>($1));
+    if ($1 != nullptr) {
+      ps->AddDefinedType(unique_ptr<AidlDefinedType>($1));
+    }
   }
  | decls decl {
-    ps->AddDefinedType(unique_ptr<AidlDefinedType>($2));
+    if ($2 != nullptr) {
+      ps->AddDefinedType(unique_ptr<AidlDefinedType>($2));
+    }
   };
 
 decl
@@ -223,12 +227,12 @@ decl
    {
     $$ = $2;
 
-    if ($1->size() > 0) {
+    if ($1->size() > 0 && $$ != nullptr) {
       // copy comments from annotation to decl
-      $2->SetComments($1->begin()->GetComments());
+      $$->SetComments($1->begin()->GetComments());
+      $$->Annotate(std::move(*$1));
     }
 
-    $$->Annotate(std::move(*$1));
     delete $1;
    }
  ;
@@ -307,7 +311,6 @@ interface_decl
     ps->AddError();
     $$ = nullptr;
     delete $1;
-    delete $2;
     delete $4;
   };
 
@@ -430,10 +433,9 @@ const_expr
   }
  | '(' error ')'
    {
-     std::cerr << "ERROR: invalid const expression within parenthesis: "
-               << $2->GetText() << " at " << @1 << ".\n";
-     // to avoid segfaults
+     std::cerr << "ERROR: invalid const expression within parenthesis at " << @1 << ".\n";
      ps->AddError();
+     // to avoid segfaults
      $$ = AidlConstantValue::Integral(loc(@1), "0");
    }
  ;
@@ -465,10 +467,13 @@ constant_decl
    }
  ;
 
-// TODO(b/139877950): Support autofilling enumerator values
 enumerator
  : identifier '=' const_expr {
     $$ = new AidlEnumerator(loc(@1), $1->GetText(), $3, $1->GetComments());
+    delete $1;
+   }
+ | identifier {
+    $$ = new AidlEnumerator(loc(@1), $1->GetText(), nullptr, $1->GetComments());
     delete $1;
    }
  ;
@@ -526,17 +531,21 @@ method_decl
     delete $9;
   };
 
-arg_list
- :
-  { $$ = new std::vector<std::unique_ptr<AidlArgument>>(); }
- | arg {
+arg_non_empty_list
+ : arg {
     $$ = new std::vector<std::unique_ptr<AidlArgument>>();
     $$->push_back(std::unique_ptr<AidlArgument>($1));
   }
- | arg_list ',' arg {
+ | arg_non_empty_list ',' arg {
     $$ = $1;
     $$->push_back(std::unique_ptr<AidlArgument>($3));
   };
+
+arg_list
+ : /*empty*/
+   { $$ = new std::vector<std::unique_ptr<AidlArgument>>(); }
+ | arg_non_empty_list { $$ = $1; }
+ ;
 
 arg
  : direction type identifier {
@@ -633,18 +642,20 @@ annotation
  : ANNOTATION
   {
     $$ = AidlAnnotation::Parse(loc(@1), $1->GetText(), nullptr);
-    if ($$ == nullptr) {
+    if ($$) {
+      $$->SetComments($1->GetComments());
+    } else {
       ps->AddError();
     }
-    $$->SetComments($1->GetComments());
     delete $1;
   };
  | ANNOTATION '(' parameter_list ')' {
     $$ = AidlAnnotation::Parse(loc(@1), $1->GetText(), $3);
-    if ($$ == nullptr) {
+    if ($$) {
+      $$->SetComments($1->GetComments());
+    } else {
       ps->AddError();
     }
-    $$->SetComments($1->GetComments());
     delete $1;
     delete $3;
  }

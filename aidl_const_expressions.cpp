@@ -306,6 +306,21 @@ AidlConstantValue* AidlConstantValue::String(const AidlLocation& location, const
   return new AidlConstantValue(location, Type::STRING, value);
 }
 
+AidlConstantValue* AidlConstantValue::ShallowIntegralCopy(const AidlConstantValue& other) {
+  // TODO(b/142894901): Perform full proper copy
+  AidlTypeSpecifier type = AidlTypeSpecifier(AIDL_LOCATION_HERE, "long", false, nullptr, "");
+  if (!other.evaluate(type)) {
+    AIDL_FATAL(other) << "Unsupported type for ShallowIntegralCopy: " << ToString(other.GetType());
+  }
+
+  AidlConstantValue* result =
+      Integral(AIDL_LOCATION_HERE, other.ValueString(type, AidlConstantValueDecorator));
+  if (result == nullptr) {
+    AIDL_FATAL(other) << "Unable to perform ShallowIntegralCopy.";
+  }
+  return result;
+}
+
 string AidlConstantValue::ValueString(const AidlTypeSpecifier& type,
                                       const ConstantValueDecorator& decorator) const {
   if (type.IsGeneric()) {
