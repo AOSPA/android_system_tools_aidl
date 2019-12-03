@@ -782,6 +782,26 @@ Options::Language::CPP));
 }
 */
 
+// TODO(b/136048684)
+TEST_F(AidlTest, PrimitiveList) {
+  string primitive_interface =
+      "package a; interface IFoo {\n"
+      "  List<int> foo(); }";
+  string primitive_parcelable =
+      "package a; parcelable IData {\n"
+      "  List<int> foo;}";
+  EXPECT_EQ(nullptr,
+            Parse("a/IFoo.aidl", primitive_interface, typenames_, Options::Language::JAVA));
+  EXPECT_EQ(nullptr, Parse("a/IFoo.aidl", primitive_interface, typenames_, Options::Language::CPP));
+  EXPECT_EQ(nullptr, Parse("a/IFoo.aidl", primitive_interface, typenames_, Options::Language::NDK));
+  EXPECT_EQ(nullptr,
+            Parse("a/IFoo.aidl", primitive_parcelable, typenames_, Options::Language::JAVA));
+  EXPECT_EQ(nullptr,
+            Parse("a/IFoo.aidl", primitive_parcelable, typenames_, Options::Language::CPP));
+  EXPECT_EQ(nullptr,
+            Parse("a/IFoo.aidl", primitive_parcelable, typenames_, Options::Language::NDK));
+}
+
 TEST_F(AidlTest, ApiDump) {
   io_delegate_.SetFileContents(
       "foo/bar/IFoo.aidl",
@@ -808,8 +828,8 @@ TEST_F(AidlTest, ApiDump) {
                                "   @nullable String[] c;\n"
                                "}\n");
   io_delegate_.SetFileContents("api.aidl", "");
-  vector<string> args = {"aidl", "--dumpapi", "--out=dump", "foo/bar/IFoo.aidl",
-                         "foo/bar/Data.aidl"};
+  vector<string> args = {"aidl", "--dumpapi", "--out=dump", "--include=.",
+                         "foo/bar/IFoo.aidl", "foo/bar/Data.aidl"};
   Options options = Options::From(args);
   bool result = dump_api(options, io_delegate_);
   ASSERT_TRUE(result);
@@ -935,7 +955,7 @@ TEST_F(AidlTest, FailOnMultipleTypesInSingleFile) {
 
 TEST_F(AidlTest, MultipleInputFiles) {
   Options options = Options::From(
-      "aidl --lang=java -o out foo/bar/IFoo.aidl foo/bar/Data.aidl");
+      "aidl --lang=java -o out -I . foo/bar/IFoo.aidl foo/bar/Data.aidl");
 
   io_delegate_.SetFileContents(options.InputFiles().at(0),
       "package foo.bar;\n"
@@ -960,7 +980,7 @@ TEST_F(AidlTest, MultipleInputFiles) {
 
 TEST_F(AidlTest, MultipleInputFilesCpp) {
   Options options = Options::From("aidl --lang=cpp -o out -h out/include "
-      "foo/bar/IFoo.aidl foo/bar/Data.aidl");
+      "-I . foo/bar/IFoo.aidl foo/bar/Data.aidl");
 
   io_delegate_.SetFileContents(options.InputFiles().at(0),
       "package foo.bar;\n"
