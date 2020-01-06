@@ -99,6 +99,11 @@ ArgList BuildArgList(const AidlTypenames& typenames, const AidlMethod& method, b
   vector<string> method_arguments;
   for (const unique_ptr<AidlArgument>& a : method.GetArguments()) {
     string literal;
+    // b/144943748: CppNameOf FileDescriptor is unique_fd. Don't pass it by
+    // const reference but by value to make it easier for the user to keep
+    // it beyond the scope of the call. unique_fd is a thin wrapper for an
+    // int (fd) so passing by value is not expensive.
+    const bool nonCopyable = IsNonCopyableType(a->GetType(), typenames);
     if (for_declaration) {
       // Method declarations need typenames, pointers to out params, and variable
       // names that match the .aidl specification.
@@ -114,7 +119,7 @@ ArgList BuildArgList(const AidlTypenames& typenames, const AidlMethod& method, b
 
         // We pass in parameters that are not primitives by const reference.
         // Arrays of primitives are not primitives.
-        if (!(isPrimitive || isEnum) || a->GetType().IsArray()) {
+        if (!(isPrimitive || isEnum || nonCopyable) || a->GetType().IsArray()) {
           literal = "const " + literal + "&";
         }
       }
@@ -122,8 +127,14 @@ ArgList BuildArgList(const AidlTypenames& typenames, const AidlMethod& method, b
         literal += " " + a->GetName();
       }
     } else {
-      if (a->IsOut()) { literal = "&"; }
-      literal += BuildVarName(*a);
+      std::string varName = BuildVarName(*a);
+      if (a->IsOut()) {
+        literal = "&" + varName;
+      } else if (nonCopyable) {
+        literal = "std::move(" + varName + ")";
+      } else {
+        literal = varName;
+      }
     }
     method_arguments.push_back(literal);
   }
@@ -306,7 +317,11 @@ unique_ptr<Declaration> DefineClientTransaction(const AidlTypenames& typenames,
   // default implementation, if provided.
   vector<string> arg_names;
   for (const auto& a : method.GetArguments()) {
-    arg_names.emplace_back(a->GetName());
+    if (IsNonCopyableType(a->GetType(), typenames)) {
+      arg_names.emplace_back(StringPrintf("std::move(%s)", a->GetName().c_str()));
+    } else {
+      arg_names.emplace_back(a->GetName());
+    }
   }
   if (method.GetType().GetName() != "void") {
     arg_names.emplace_back(kReturnVarName);
@@ -1156,7 +1171,7 @@ std::string GenerateEnumToString(const AidlTypenames& typenames,
 
 std::unique_ptr<Document> BuildEnumHeader(const AidlTypenames& typenames,
                                           const AidlEnumDeclaration& enum_decl) {
-  unique_ptr<Enum> generated_enum{
+  std::unique_ptr<Enum> generated_enum{
       new Enum{enum_decl.GetName(), CppNameOf(enum_decl.GetBackingType(), typenames), true}};
   for (const auto& enumerator : enum_decl.GetEnumerators()) {
     generated_enum->AddValue(
@@ -1164,18 +1179,25 @@ std::unique_ptr<Document> BuildEnumHeader(const AidlTypenames& typenames,
         enumerator->ValueString(enum_decl.GetBackingType(), ConstantValueDecorator));
   }
 
-  set<string> includes = {"string"};
+  std::set<std::string> includes = {
+      "array",
+      "binder/Enums.h",
+      "string",
+  };
   AddHeaders(enum_decl.GetBackingType(), typenames, includes);
 
-  vector<unique_ptr<Declaration>> decls;
-  decls.emplace_back(std::move(generated_enum));
-  decls.emplace_back(
-      unique_ptr<Declaration>(new LiteralDecl(GenerateEnumToString(typenames, enum_decl))));
+  std::vector<std::unique_ptr<Declaration>> decls1;
+  decls1.push_back(std::move(generated_enum));
+  decls1.push_back(std::make_unique<LiteralDecl>(GenerateEnumToString(typenames, enum_decl)));
+
+  std::vector<std::unique_ptr<Declaration>> decls2;
+  decls2.push_back(std::make_unique<LiteralDecl>(GenerateEnumValues(enum_decl, {""})));
 
   return unique_ptr<Document>{
       new CppHeader{BuildHeaderGuard(enum_decl, ClassNames::RAW),
                     vector<string>(includes.begin(), includes.end()),
-                    NestInNamespaces(std::move(decls), enum_decl.GetSplitPackage())}};
+                    Append(NestInNamespaces(std::move(decls1), enum_decl.GetSplitPackage()),
+                           NestInNamespaces(std::move(decls2), {"android", "internal"}))}};
 }
 
 bool WriteHeader(const Options& options, const AidlTypenames& typenames,

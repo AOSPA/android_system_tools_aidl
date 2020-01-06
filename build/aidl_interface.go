@@ -88,8 +88,8 @@ var (
 			Command: `mkdir -p ${to} && rm -rf ${to}/* && ` +
 				`${bpmodifyCmd} -w -m ${name} -parameter versions -a ${version} ${bp} && ` +
 				`cp -rf ${apiDir}/. ${to} && ` +
-				`find ${to} -type f -exec bash -c ` +
-				`"cat ${apiPreamble} {} > {}.temp; mv {}.temp {}" \; && ` +
+				`find ${to} -type f -name "*.aidl" | xargs -n 1 bash -c ` +
+				`'cat ${apiPreamble} $$0 > $$0.temp && mv $$0.temp $$0' && ` +
 				`touch ${out}`,
 			CommandDeps: []string{"${bpmodifyCmd}"},
 		}, "to", "name", "version", "bp", "apiDir", "apiPreamble")
@@ -692,9 +692,16 @@ func (i *aidlInterface) shouldGenerateNdkBackend() bool {
 	return i.properties.Backend.Ndk.Enabled == nil || *i.properties.Backend.Ndk.Enabled
 }
 
-func (i *aidlInterface) checkImports(mctx android.LoadHookContext) {
+func (i *aidlInterface) gatherInterface(mctx android.LoadHookContext) {
+	aidlInterfaces := aidlInterfaces(mctx.Config())
+	aidlInterfaceMutex.Lock()
+	defer aidlInterfaceMutex.Unlock()
+	*aidlInterfaces = append(*aidlInterfaces, i)
+}
+
+func (i *aidlInterface) checkImports(mctx android.BaseModuleContext) {
 	for _, anImport := range i.properties.Imports {
-		other := lookupInterface(anImport)
+		other := lookupInterface(anImport, mctx.Config())
 
 		if other == nil {
 			mctx.PropertyErrorf("imports", "Import does not exist: "+anImport)
@@ -729,7 +736,7 @@ func (i *aidlInterface) checkStability(mctx android.LoadHookContext) {
 	}
 }
 
-func (i *aidlInterface) currentVersion(ctx android.BaseModuleContext) string {
+func (i *aidlInterface) currentVersion(ctx android.LoadHookContext) string {
 	if !i.hasVersion() {
 		return ""
 	} else {
@@ -759,7 +766,7 @@ func (i *aidlInterface) hasVersion() bool {
 	return len(i.properties.Versions) > 0
 }
 
-func (i *aidlInterface) isCurrentVersion(ctx android.BaseModuleContext, version string) bool {
+func (i *aidlInterface) isCurrentVersion(ctx android.LoadHookContext, version string) bool {
 	return version == i.currentVersion(ctx)
 }
 
@@ -769,7 +776,7 @@ func (i *aidlInterface) isCurrentVersion(ctx android.BaseModuleContext, version 
 // "2"->foo-V2
 // "3"(unfrozen)->foo-unstable
 // ""-> foo
-func (i *aidlInterface) versionedName(ctx android.BaseModuleContext, version string) string {
+func (i *aidlInterface) versionedName(ctx android.LoadHookContext, version string) string {
 	name := i.ModuleBase.Name()
 	if version == "" {
 		return name
@@ -831,7 +838,7 @@ func aidlInterfaceHook(mctx android.LoadHookContext, i *aidlInterface) {
 
 	i.properties.Full_import_paths = importPaths
 
-	i.checkImports(mctx)
+	i.gatherInterface(mctx)
 	i.checkStability(mctx)
 
 	if mctx.Failed() {
@@ -1049,26 +1056,30 @@ func (i *aidlInterface) Name() string {
 func (i *aidlInterface) GenerateAndroidBuildActions(ctx android.ModuleContext) {
 }
 func (i *aidlInterface) DepsMutator(ctx android.BottomUpMutatorContext) {
+	i.checkImports(ctx)
 }
 
-var aidlInterfaceMutex sync.Mutex
-var aidlInterfaces []*aidlInterface
+var (
+	aidlInterfacesKey  = android.NewOnceKey("aidlInterfaces")
+	aidlInterfaceMutex sync.Mutex
+)
+
+func aidlInterfaces(config android.Config) *[]*aidlInterface {
+	return config.Once(aidlInterfacesKey, func() interface{} {
+		return &[]*aidlInterface{}
+	}).(*[]*aidlInterface)
+}
 
 func aidlInterfaceFactory() android.Module {
 	i := &aidlInterface{}
 	i.AddProperties(&i.properties)
 	android.InitAndroidModule(i)
 	android.AddLoadHook(i, func(ctx android.LoadHookContext) { aidlInterfaceHook(ctx, i) })
-
-	aidlInterfaceMutex.Lock()
-	aidlInterfaces = append(aidlInterfaces, i)
-	aidlInterfaceMutex.Unlock()
-
 	return i
 }
 
-func lookupInterface(name string) *aidlInterface {
-	for _, i := range aidlInterfaces {
+func lookupInterface(name string, config android.Config) *aidlInterface {
+	for _, i := range *aidlInterfaces(config) {
 		if i.ModuleBase.Name() == name {
 			return i
 		}

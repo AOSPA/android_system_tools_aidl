@@ -47,7 +47,7 @@ cc_library_static {
 
     srcs: [
         "aidl.cpp",
-        "aidl_apicheck.cpp",
+        "aidl_checkapi.cpp",
         "aidl_const_expressions.cpp",
         "aidl_language.cpp",
         "aidl_language_l.ll",
@@ -148,6 +148,9 @@ cc_fuzz {
     name: "aidl_parser_fuzzer",
     host_supported: true,
     dictionary: "tests/aidl_parser_fuzzer.dict",
+    corpus: [
+        "tests/corpus/*",
+    ],
 
     fuzz_config: {
         cc: [
