@@ -866,21 +866,11 @@ void GenerateParcelSource(CodeWriter& out, const AidlTypenames& types,
 
   out << "binder_status_t " << clazz << "::readFromParcel(const AParcel* parcel) {\n";
   out.Indent();
-  out << "std::string _aidl_descriptor;\n";
-  out << "binder_status_t _aidl_ret_status;\n";
-
-  out << "int32_t _aidl_null;\n";
   out << "int32_t _aidl_parcelable_size;\n";
-  out << "int32_t _aidl_start_pos;\n";
-  out << "_aidl_ret_status = AParcel_readInt32(parcel, &_aidl_null);\n";
-  StatusCheckReturn(out);
-  out << "_aidl_start_pos = AParcel_getDataPosition(parcel);\n";
-  out << "_aidl_ret_status = AParcel_readInt32(parcel, &_aidl_parcelable_size);\n";
+  out << "int32_t _aidl_start_pos = AParcel_getDataPosition(parcel);\n";
+  out << "binder_status_t _aidl_ret_status = AParcel_readInt32(parcel, &_aidl_parcelable_size);\n";
   out << "if (_aidl_parcelable_size < 0) return STATUS_BAD_VALUE;\n";
   StatusCheckReturn(out);
-
-  // TODO(b/117281836)
-  out << "if (_aidl_null == 0) return STATUS_UNEXPECTED_NULL;\n\n";
 
   for (const auto& variable : defined_type.GetFields()) {
     out << "_aidl_ret_status = ";
@@ -901,9 +891,6 @@ void GenerateParcelSource(CodeWriter& out, const AidlTypenames& types,
   out.Indent();
   out << "binder_status_t _aidl_ret_status;\n";
 
-  // non-null
-  out << "_aidl_ret_status = AParcel_writeInt32(parcel, 1);\n";
-  StatusCheckReturn(out);
   out << "size_t _aidl_start_pos = AParcel_getDataPosition(parcel);\n";
   out << "_aidl_ret_status = AParcel_writeInt32(parcel, 0);\n";
   StatusCheckReturn(out);
@@ -958,6 +945,9 @@ void GenerateEnumHeader(CodeWriter& out, const AidlTypenames& types,
   out << "\n";
 
   GenerateHeaderIncludes(out, types, enum_decl);
+  // enum specific headers
+  out << "#include <array>\n";
+  out << "#include <android/binder_enums.h>\n";
 
   EnterNdkNamespace(out, enum_decl);
   out << "enum class " << enum_decl.GetName() << " : "
@@ -972,6 +962,12 @@ void GenerateEnumHeader(CodeWriter& out, const AidlTypenames& types,
   out << "\n";
   out << GenerateEnumToString(types, enum_decl);
   LeaveNdkNamespace(out, enum_decl);
+
+  out << "namespace ndk {\n";
+  out << "namespace internal {\n";
+  out << cpp::GenerateEnumValues(enum_decl, {"aidl"});
+  out << "}  // namespace internal\n";
+  out << "}  // namespace android\n";
 }
 
 }  // namespace internals
