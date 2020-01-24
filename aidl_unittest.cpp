@@ -82,7 +82,7 @@ public class Rect implements android.os.Parcelable
   @android.annotation.SystemApi
   public int x = 5;
 
-  @dalvik.annotation.compat.UnsupportedAppUsage(expectedSignature = "dummy", implicitMember = "dummy", maxTargetSdk = 28, publicAlternatives = "dummy", trackingBug = 42L, overrideSourcePosition="Rect.aidl:7:1:10:14")
+  @android.compat.annotation.UnsupportedAppUsage(expectedSignature = "dummy", implicitMember = "dummy", maxTargetSdk = 28, publicAlternatives = "dummy", trackingBug = 42L, overrideSourcePosition="Rect.aidl:7:1:10:14")
   @android.annotation.SystemApi
   public int y;
 
@@ -362,15 +362,19 @@ TEST_F(AidlTest, ParsesStabilityAnnotations) {
 
 TEST_F(AidlTest, ParsesJavaOnlyStableParcelable) {
   Options java_options = Options::From("aidl -o out --structured a/Foo.aidl");
-  Options cpp_options =
+  Options cpp_options = Options::From("aidl --lang=cpp -o out -h out/include a/Foo.aidl");
+  Options cpp_structured_options =
       Options::From("aidl --lang=cpp --structured -o out -h out/include a/Foo.aidl");
   io_delegate_.SetFileContents(
-      "a/Foo.aidl", StringPrintf("package a; @JavaOnlyStableParcelable parcelable Foo;"));
+      "a/Foo.aidl",
+      StringPrintf("package a; @JavaOnlyStableParcelable parcelable Foo cpp_header \"Foo.h\" ;"));
 
   EXPECT_EQ(0, ::android::aidl::compile_aidl(java_options, io_delegate_));
+  EXPECT_EQ(0, ::android::aidl::compile_aidl(cpp_options, io_delegate_));
   AddExpectedStderr(
-      "ERROR: a/Foo.aidl:1.48-52: @JavaOnlyStableParcelable supports only Java target.\n");
-  EXPECT_NE(0, ::android::aidl::compile_aidl(cpp_options, io_delegate_));
+      "ERROR: a/Foo.aidl:1.48-52: Cannot declared parcelable in a --structured interface. "
+      "Parcelable must be defined in AIDL directly.\n");
+  EXPECT_NE(0, ::android::aidl::compile_aidl(cpp_structured_options, io_delegate_));
 }
 
 TEST_F(AidlTest, AcceptsOneway) {
@@ -923,6 +927,31 @@ TEST_F(AidlTest, CheckNumGenericTypeSecifier) {
   EXPECT_NE(0, ::android::aidl::compile_aidl(options2, io_delegate_));
 }
 
+TEST_F(AidlTest, CheckTypeParameterInMapType) {
+  Options options = Options::From("aidl -I p p/IFoo.aidl");
+  io_delegate_.SetFileContents("p/Bar.aidl", "package p; parcelable Bar { String s; }");
+
+  io_delegate_.SetFileContents("p/IFoo.aidl",
+                               "package p; interface IFoo {"
+                               "Map<String, Bar> foo();}");
+  EXPECT_EQ(0, ::android::aidl::compile_aidl(options, io_delegate_));
+
+  io_delegate_.SetFileContents("p/IFoo.aidl",
+                               "package p; interface IFoo {"
+                               "Map<Bar, Bar> foo();}");
+  EXPECT_NE(0, ::android::aidl::compile_aidl(options, io_delegate_));
+
+  io_delegate_.SetFileContents("p/IFoo.aidl",
+                               "package p; interface IFoo {"
+                               "Map<String, String> foo();}");
+  EXPECT_EQ(0, ::android::aidl::compile_aidl(options, io_delegate_));
+
+  io_delegate_.SetFileContents("p/IFoo.aidl",
+                               "package p; interface IFoo {"
+                               "Map<String, ParcelFileDescriptor> foo();}");
+  EXPECT_EQ(0, ::android::aidl::compile_aidl(options, io_delegate_));
+}
+
 TEST_F(AidlTest, WrongGenericType) {
   Options options = Options::From("aidl p/IFoo.aidl IFoo.java");
   io_delegate_.SetFileContents(options.InputFiles().front(),
@@ -949,6 +978,16 @@ TEST_F(AidlTest, UserDefinedUnstructuredGenericParcelableType) {
   io_delegate_.SetFileContents("p/IFoo.aidl",
                                "package p; interface IFoo {"
                                "Bar<String, ParcelFileDescriptor> foo();}");
+  EXPECT_EQ(0, ::android::aidl::compile_aidl(options, io_delegate_));
+
+  io_delegate_.SetFileContents("p/IFoo.aidl",
+                               "package p; interface IFoo {"
+                               "Bar<int, long> foo();}");
+
+  io_delegate_.SetFileContents("p/IFoo.aidl",
+                               "package p; interface IFoo {"
+                               "Bar<int[], long[]> foo();}");
+
   EXPECT_EQ(0, ::android::aidl::compile_aidl(options, io_delegate_));
 }
 

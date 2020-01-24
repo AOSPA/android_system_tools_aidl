@@ -357,7 +357,7 @@ bool parse_preprocessed_file(const IoDelegate& io_delegate, const string& filena
   }
 
   string line;
-  unsigned lineno = 1;
+  int lineno = 1;
   for ( ; line_reader->ReadLine(&line); ++lineno) {
     if (line.empty() || line.compare(0, 2, "//") == 0) {
       // skip comments and empty lines
@@ -571,7 +571,7 @@ AidlError load_and_validate_aidl(const std::string& input_file_name, const Optio
       if (!unstructuredParcelable->CheckValid(*typenames)) {
         return AidlError::BAD_TYPE;
       }
-      bool isStable = unstructuredParcelable->IsStableParcelable();
+      bool isStable = unstructuredParcelable->IsStableApiParcelable(options.TargetLanguage());
       if (options.IsStructured() && !isStable) {
         AIDL_ERROR(unstructuredParcelable)
             << "Cannot declared parcelable in a --structured interface. Parcelable must be defined "
@@ -663,7 +663,7 @@ AidlError load_and_validate_aidl(const std::string& input_file_name, const Optio
 
   typenames->IterateTypes([&](const AidlDefinedType& type) {
     if (options.IsStructured() && type.AsUnstructuredParcelable() != nullptr &&
-        !type.AsUnstructuredParcelable()->IsStableParcelable()) {
+        !type.AsUnstructuredParcelable()->IsStableApiParcelable(options.TargetLanguage())) {
       err = AidlError::NOT_STRUCTURED;
       LOG(ERROR) << type.GetCanonicalName()
                  << " is not structured, but this is a structured interface.";

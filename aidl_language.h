@@ -69,8 +69,8 @@ class AidlToken {
 class AidlLocation {
  public:
   struct Point {
-    unsigned int line;
-    unsigned int column;
+    int line;
+    int column;
   };
 
   AidlLocation(const std::string& file, Point begin, Point end);
@@ -134,10 +134,14 @@ class AidlError {
 
   std::ostream& os_;
 
+  static bool hadError() { return sHadError; }
+
  private:
   AidlError(bool fatal);
 
   bool fatal_;
+
+  static bool sHadError;
 
   DISALLOW_COPY_AND_ASSIGN(AidlError);
 };
@@ -238,7 +242,7 @@ class AidlAnnotatable : public AidlNode {
   bool IsUtf8InCpp() const;
   bool IsVintfStability() const;
   bool IsSystemApi() const;
-  bool IsStableParcelable() const;
+  bool IsStableApiParcelable(Options::Language lang) const;
 
   const AidlAnnotation* UnsupportedAppUsage() const;
   const AidlTypeSpecifier* BackingType(const AidlTypenames& typenames) const;
