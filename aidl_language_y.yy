@@ -107,6 +107,7 @@ AidlLocation loc(const yy::parser::location_type& l) {
 %token<token> PARCELABLE "parcelable"
 %token<token> ONEWAY "oneway"
 %token<token> ENUM "enum"
+%token<token> CONST "const"
 
 %token<character> CHARVALUE "char literal"
 %token<token> FLOATVALUE "float literal"
@@ -114,7 +115,6 @@ AidlLocation loc(const yy::parser::location_type& l) {
 %token<token> INTVALUE "int literal"
 
 %token '(' ')' ',' '=' '[' ']' '.' '{' '}' ';'
-%token CONST "const"
 %token UNKNOWN "unrecognized character"
 %token CPP_HEADER "cpp_header"
 %token IMPORT "import"
@@ -204,7 +204,7 @@ imports
 
 import
  : IMPORT qualified_name ';'
-  { ps->AddImport(new AidlImport(loc(@2), $2->GetDotName()));
+  { ps->AddImport(std::make_unique<AidlImport>(loc(@2), $2->GetDotName()));
     delete $2;
   };
 
@@ -488,7 +488,9 @@ constant_value_non_empty_list
 
 constant_decl
  : CONST type identifier '=' const_expr ';' {
+    $2->SetComments($1->GetComments());
     $$ = new AidlConstantDeclaration(loc(@3), $2, $3->GetText(), $5);
+    delete $1;
     delete $3;
    }
  ;

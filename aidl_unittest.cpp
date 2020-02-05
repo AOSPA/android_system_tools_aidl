@@ -452,6 +452,28 @@ TEST_F(AidlTest, PreferImportToPreprocessed) {
   EXPECT_EQ("one.IBar", ambiguous_type.GetName());
 }
 
+// Special case of PreferImportToPreprocessed. Imported type should be preferred
+// even when the preprocessed file already has the same type.
+TEST_F(AidlTest, B147918827) {
+  io_delegate_.SetFileContents("preprocessed", "interface another.IBar;\ninterface one.IBar;");
+  io_delegate_.SetFileContents("one/IBar.aidl",
+                               "package one; "
+                               "interface IBar {}");
+  preprocessed_files_.push_back("preprocessed");
+  import_paths_.emplace("");
+  auto parse_result = Parse("p/IFoo.aidl", "package p; import one.IBar; interface IFoo {}",
+                            typenames_, Options::Language::JAVA);
+  EXPECT_NE(nullptr, parse_result);
+
+  // We expect to know about both kinds of IBar
+  EXPECT_TRUE(typenames_.ResolveTypename("one.IBar").second);
+  EXPECT_TRUE(typenames_.ResolveTypename("another.IBar").second);
+  // But if we request just "IBar" we should get our imported one.
+  AidlTypeSpecifier ambiguous_type(AIDL_LOCATION_HERE, "IBar", false, nullptr, "");
+  ambiguous_type.Resolve(typenames_);
+  EXPECT_EQ("one.IBar", ambiguous_type.GetName());
+}
+
 TEST_F(AidlTest, WritePreprocessedFile) {
   io_delegate_.SetFileContents("p/Outer.aidl",
                                "package p; parcelable Outer.Inner;");
@@ -811,24 +833,31 @@ TEST_F(AidlTest, ApiDump) {
       "foo/bar/IFoo.aidl",
       "package foo.bar;\n"
       "import foo.bar.Data;\n"
-      "// comment\n"
+      "// comment @hide\n"
       "interface IFoo {\n"
+      "    /* @hide */\n"
       "    int foo(out int[] a, String b, boolean c, inout List<String>  d);\n"
       "    int foo2(@utf8InCpp String x, inout List<String>  y);\n"
       "    IFoo foo3(IFoo foo);\n"
       "    Data getData();\n"
+      "    // @hide\n"
       "    const int A = 1;\n"
       "    const String STR = \"Hello\";\n"
       "}\n");
   io_delegate_.SetFileContents("foo/bar/Data.aidl",
                                "package foo.bar;\n"
                                "import foo.bar.IFoo;\n"
+                               "/* @hide*/\n"
                                "parcelable Data {\n"
+                               "   // @hide\n"
                                "   int x = 10;\n"
+                               "   // @hide\n"
                                "   int y;\n"
                                "   IFoo foo;\n"
                                "   List<IFoo> a;\n"
+                               "   /*@hide2*/\n"
                                "   List<foo.bar.IFoo> b;\n"
+                               "   // It should be @hide property\n"
                                "   @nullable String[] c;\n"
                                "}\n");
   io_delegate_.SetFileContents("api.aidl", "");
@@ -840,11 +869,14 @@ TEST_F(AidlTest, ApiDump) {
   string actual;
   EXPECT_TRUE(io_delegate_.GetWrittenContents("dump/foo/bar/IFoo.aidl", &actual));
   EXPECT_EQ(actual, R"(package foo.bar;
+/* @hide */
 interface IFoo {
+  /* @hide */
   int foo(out int[] a, String b, boolean c, inout List<String> d);
   int foo2(@utf8InCpp String x, inout List<String> y);
   foo.bar.IFoo foo3(foo.bar.IFoo foo);
   foo.bar.Data getData();
+  /* @hide */
   const int A = 1;
   const String STR = "Hello";
 }
@@ -852,12 +884,16 @@ interface IFoo {
 
   EXPECT_TRUE(io_delegate_.GetWrittenContents("dump/foo/bar/Data.aidl", &actual));
   EXPECT_EQ(actual, R"(package foo.bar;
+/* @hide */
 parcelable Data {
+  /* @hide */
   int x = 10;
+  /* @hide */
   int y;
   foo.bar.IFoo foo;
   List<foo.bar.IFoo> a;
   List<foo.bar.IFoo> b;
+  /* @hide */
   @nullable String[] c;
 }
 )");

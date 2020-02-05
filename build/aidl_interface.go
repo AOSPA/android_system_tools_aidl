@@ -72,7 +72,7 @@ var (
 	aidlDumpApiRule = pctx.StaticRule("aidlDumpApiRule", blueprint.RuleParams{
 		Command: `rm -rf "${outDir}" && mkdir -p "${outDir}" && ` +
 			`${aidlCmd} --dumpapi --structured ${imports} --out ${outDir} ${in} && ` +
-			`(cd ${outDir} && find ./ -name "*.aidl" -exec sha1sum {} ';' && echo ${latestVersion}) | sha1sum > ${hashFile} `,
+			`(cd ${outDir} && find ./ -name "*.aidl" -print0 | LC_ALL=C sort -z | xargs -0 sha1sum && echo ${latestVersion}) | sha1sum > ${hashFile} `,
 		CommandDeps: []string{"${aidlCmd}"},
 	}, "imports", "outDir", "hashFile", "latestVersion")
 
@@ -257,10 +257,21 @@ func (g *aidlGenRule) generateBuildActionsForSingleAidl(ctx android.ModuleContex
 	}
 	relPath, _ := filepath.Rel(baseDir, src.String())
 	outFile := android.PathForModuleGen(ctx, pathtools.ReplaceExtension(relPath, ext))
+	implicits := g.implicitInputs
 
 	var optionalFlags []string
 	if g.properties.Version != "" {
 		optionalFlags = append(optionalFlags, "--version "+g.properties.Version)
+
+		hash := "notfrozen"
+		if !strings.HasPrefix(baseDir, ctx.Config().BuildDir()) {
+			hashFile := android.ExistentPathForSource(ctx, baseDir, ".hash")
+			if hashFile.Valid() {
+				hash = "$$(read -r <"+hashFile.Path().String()+" hash extra; printf '%s' \"$$hash\")"
+				implicits = append(implicits, hashFile.Path())
+			}
+		}
+		optionalFlags = append(optionalFlags, "--hash "+hash)
 	}
 	if g.properties.Stability != nil {
 		optionalFlags = append(optionalFlags, "--stability", *g.properties.Stability)
@@ -271,7 +282,7 @@ func (g *aidlGenRule) generateBuildActionsForSingleAidl(ctx android.ModuleContex
 		ctx.ModuleBuild(pctx, android.ModuleBuildParams{
 			Rule:      aidlJavaRule,
 			Input:     src,
-			Implicits: g.implicitInputs,
+			Implicits: implicits,
 			Output:    outFile,
 			Args: map[string]string{
 				"imports":       g.importFlags,
@@ -315,7 +326,7 @@ func (g *aidlGenRule) generateBuildActionsForSingleAidl(ctx android.ModuleContex
 		ctx.ModuleBuild(pctx, android.ModuleBuildParams{
 			Rule:            aidlCppRule,
 			Input:           src,
-			Implicits:       g.implicitInputs,
+			Implicits:       implicits,
 			Output:          outFile,
 			ImplicitOutputs: headers,
 			Args: map[string]string{

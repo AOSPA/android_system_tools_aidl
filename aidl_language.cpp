@@ -55,7 +55,7 @@ using std::unique_ptr;
 using std::vector;
 
 namespace {
-bool is_java_keyword(const char* str) {
+bool IsJavaKeyword(const char* str) {
   static const std::vector<std::string> kJavaKeywords{
       "abstract", "assert", "boolean",    "break",     "byte",       "case",      "catch",
       "char",     "class",  "const",      "continue",  "default",    "do",        "double",
@@ -67,6 +67,14 @@ bool is_java_keyword(const char* str) {
       "while",    "true",   "false",      "null",
   };
   return std::find(kJavaKeywords.begin(), kJavaKeywords.end(), str) != kJavaKeywords.end();
+}
+
+void AddHideComment(CodeWriter* writer) {
+  writer->Write("/* @hide */\n");
+}
+
+inline bool HasHideComment(const std::string& comment) {
+  return std::regex_search(comment, std::regex("@hide\\b"));
 }
 }  // namespace
 
@@ -335,9 +343,13 @@ AidlTypeSpecifier AidlTypeSpecifier::ArrayBase() const {
   // Declaring array of generic type cannot happen, it is grammar error.
   AIDL_FATAL_IF(IsGeneric(), this);
 
-  AidlTypeSpecifier arrayBase = *this;
-  arrayBase.is_array_ = false;
-  return arrayBase;
+  AidlTypeSpecifier array_base = *this;
+  array_base.is_array_ = false;
+  return array_base;
+}
+
+bool AidlTypeSpecifier::IsHidden() const {
+  return HasHideComment(GetComments());
 }
 
 string AidlTypeSpecifier::ToString() const {
@@ -391,25 +403,25 @@ bool AidlTypeSpecifier::CheckValid(const AidlTypenames& typenames) const {
         return false;
       }
     }
-    const auto definedType = typenames.TryGetDefinedType(type_name);
+    const auto defined_type = typenames.TryGetDefinedType(type_name);
     const auto parameterizable =
-        definedType != nullptr ? definedType->AsParameterizable() : nullptr;
-    const bool isUserDefinedGenericType =
+        defined_type != nullptr ? defined_type->AsParameterizable() : nullptr;
+    const bool is_user_defined_generic_type =
         parameterizable != nullptr && parameterizable->IsGeneric();
-    const size_t num = GetTypeParameters().size();
+    const size_t num_params = GetTypeParameters().size();
     if (type_name == "List") {
-      if (num > 1) {
+      if (num_params > 1) {
         AIDL_ERROR(this) << " List cannot have type parameters more than one, but got "
                          << "'" << ToString() << "'";
         return false;
       }
     } else if (type_name == "Map") {
-      if (num != 0 && num != 2) {
+      if (num_params != 0 && num_params != 2) {
         AIDL_ERROR(this) << "Map must have 0 or 2 type parameters, but got "
                          << "'" << ToString() << "'";
         return false;
       }
-      if (num == 2) {
+      if (num_params == 2) {
         const string& key_type = GetTypeParameters()[0]->GetName();
         if (key_type != "String") {
           AIDL_ERROR(this) << "The type of key in map must be String, but it is "
@@ -417,17 +429,25 @@ bool AidlTypeSpecifier::CheckValid(const AidlTypenames& typenames) const {
           return false;
         }
       }
-    } else if (isUserDefinedGenericType) {
+    } else if (is_user_defined_generic_type) {
       const size_t allowed = parameterizable->GetTypeParameters().size();
-      if (num != allowed) {
+      if (num_params != allowed) {
         AIDL_ERROR(this) << type_name << " must have " << allowed << " type parameters, but got "
-                         << num;
+                         << num_params;
         return false;
       }
     } else {
       AIDL_ERROR(this) << type_name << " is not a generic type.";
       return false;
     }
+  }
+
+  const bool is_generic_string_list = GetName() == "List" && IsGeneric() &&
+                                      GetTypeParameters().size() == 1 &&
+                                      GetTypeParameters()[0]->GetName() == "String";
+  if (IsUtf8InCpp() && (GetName() != "String" && !is_generic_string_list)) {
+    AIDL_ERROR(this) << "@utf8InCpp can only be used on String, String[], and List<String>.";
+    return false;
   }
 
   if (GetName() == "void") {
@@ -438,8 +458,8 @@ bool AidlTypeSpecifier::CheckValid(const AidlTypenames& typenames) const {
   }
 
   if (IsArray()) {
-    const auto definedType = typenames.TryGetDefinedType(GetName());
-    if (definedType != nullptr && definedType->AsInterface() != nullptr) {
+    const auto defined_type = typenames.TryGetDefinedType(GetName());
+    if (defined_type != nullptr && defined_type->AsInterface() != nullptr) {
       AIDL_ERROR(this) << "Binder type cannot be an array";
       return false;
     }
@@ -450,8 +470,8 @@ bool AidlTypeSpecifier::CheckValid(const AidlTypenames& typenames) const {
       AIDL_ERROR(this) << "Primitive type cannot get nullable annotation";
       return false;
     }
-    const auto definedType = typenames.TryGetDefinedType(GetName());
-    if (definedType != nullptr && definedType->AsEnumDeclaration() != nullptr && !IsArray()) {
+    const auto defined_type = typenames.TryGetDefinedType(GetName());
+    if (defined_type != nullptr && defined_type->AsEnumDeclaration() != nullptr && !IsArray()) {
       AIDL_ERROR(this) << "Enum type cannot get nullable annotation";
       return false;
     }
@@ -612,6 +632,9 @@ AidlMethod::AidlMethod(const AidlLocation& location, bool oneway, AidlTypeSpecif
   }
 }
 
+bool AidlMethod::IsHidden() const {
+  return HasHideComment(GetComments());
+}
 
 string AidlMethod::Signature() const {
   vector<string> arg_signatures;
@@ -641,6 +664,10 @@ AidlDefinedType::AidlDefinedType(const AidlLocation& location, const std::string
 
 std::string AidlDefinedType::GetPackage() const {
   return Join(package_, '.');
+}
+
+bool AidlDefinedType::IsHidden() const {
+  return HasHideComment(GetComments());
 }
 
 std::string AidlDefinedType::GetCanonicalName() const {
@@ -712,7 +739,7 @@ bool AidlParcelable::CheckValid(const AidlTypenames&) const {
   return true;
 }
 
-void AidlParcelable::Write(CodeWriter* writer) const {
+void AidlParcelable::Dump(CodeWriter* writer) const {
   writer->Write("parcelable %s ;\n", GetName().c_str());
 }
 
@@ -722,10 +749,16 @@ AidlStructuredParcelable::AidlStructuredParcelable(
     : AidlParcelable(location, name, package, comments, "" /*cpp_header*/),
       variables_(std::move(*variables)) {}
 
-void AidlStructuredParcelable::Write(CodeWriter* writer) const {
+void AidlStructuredParcelable::Dump(CodeWriter* writer) const {
+  if (this->IsHidden()) {
+    AddHideComment(writer);
+  }
   writer->Write("parcelable %s {\n", GetName().c_str());
   writer->Indent();
   for (const auto& field : GetFields()) {
+    if (field->GetType().IsHidden()) {
+      AddHideComment(writer);
+    }
     writer->Write("%s;\n", field->ToString().c_str());
   }
   writer->Dedent();
@@ -799,10 +832,10 @@ bool AidlTypeSpecifier::LanguageSpecificCheckValid(Options::Language lang) const
 // TODO: we should treat every backend all the same in future.
 bool AidlParcelable::LanguageSpecificCheckValid(Options::Language lang) const {
   if (lang != Options::Language::JAVA) {
-    const AidlParcelable* unstructuredParcelable = this->AsUnstructuredParcelable();
-    if (unstructuredParcelable != nullptr) {
-      if (unstructuredParcelable->GetCppHeader().empty()) {
-        AIDL_ERROR(unstructuredParcelable)
+    const AidlParcelable* unstructured_parcelable = this->AsUnstructuredParcelable();
+    if (unstructured_parcelable != nullptr) {
+      if (unstructured_parcelable->GetCppHeader().empty()) {
+        AIDL_ERROR(unstructured_parcelable)
             << "Unstructured parcelable must have C++ header defined.";
         return false;
       }
@@ -893,7 +926,7 @@ bool AidlEnumDeclaration::CheckValid(const AidlTypenames&) const {
   return success;
 }
 
-void AidlEnumDeclaration::Write(CodeWriter* writer) const {
+void AidlEnumDeclaration::Dump(CodeWriter* writer) const {
   writer->Write("%s\n", AidlAnnotatable::ToString().c_str());
   writer->Write("enum %s {\n", GetName().c_str());
   writer->Indent();
@@ -945,13 +978,22 @@ AidlInterface::AidlInterface(const AidlLocation& location, const std::string& na
   delete members;
 }
 
-void AidlInterface::Write(CodeWriter* writer) const {
+void AidlInterface::Dump(CodeWriter* writer) const {
+  if (this->IsHidden()) {
+    AddHideComment(writer);
+  }
   writer->Write("interface %s {\n", GetName().c_str());
   writer->Indent();
   for (const auto& method : GetMethods()) {
+    if (method->IsHidden()) {
+      AddHideComment(writer);
+    }
     writer->Write("%s;\n", method->ToString().c_str());
   }
   for (const auto& constdecl : GetConstantDeclarations()) {
+    if (constdecl->GetType().IsHidden()) {
+      AddHideComment(writer);
+    }
     writer->Write("%s;\n", constdecl->ToString().c_str());
   }
   writer->Dedent();
@@ -1005,7 +1047,7 @@ bool AidlInterface::CheckValid(const AidlTypenames& typenames) const {
       }
 
       // check that the name doesn't match a keyword
-      if (is_java_keyword(arg->GetName().c_str())) {
+      if (IsJavaKeyword(arg->GetName().c_str())) {
         AIDL_ERROR(arg) << "Argument name is a Java or aidl keyword";
         return false;
       }
@@ -1027,7 +1069,7 @@ bool AidlInterface::CheckValid(const AidlTypenames& typenames) const {
       return false;
     }
 
-    static set<string> reserved_methods{"asBinder()", "getInterfaceVersion()",
+    static set<string> reserved_methods{"asBinder()", "getInterfaceHash()", "getInterfaceVersion()",
                                         "getTransactionName(int)"};
 
     if (reserved_methods.find(m->Signature()) != reserved_methods.end()) {
@@ -1098,8 +1140,13 @@ std::vector<std::string> Parser::Package() const {
   return package_->GetTerms();
 }
 
-void Parser::AddImport(AidlImport* import) {
-  imports_.emplace_back(import);
+void Parser::AddImport(std::unique_ptr<AidlImport>&& import) {
+  for (const auto& i : imports_) {
+    if (i->GetNeededClass() == import->GetNeededClass()) {
+      return;
+    }
+  }
+  imports_.emplace_back(std::move(import));
 }
 
 bool Parser::Resolve() {
