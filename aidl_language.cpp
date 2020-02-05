@@ -31,7 +31,7 @@
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
 
-#include "aidl_language_y.h"
+#include "aidl_language_y-module.h"
 #include "logging.h"
 
 #include "aidl.h"
@@ -109,15 +109,19 @@ std::string AidlNode::PrintLocation() const {
 }
 
 AidlError::AidlError(bool fatal) : os_(std::cerr), fatal_(fatal) {
+  sHadError = true;
+
   os_ << "ERROR: ";
 }
+
+bool AidlError::sHadError = false;
 
 static const string kNullable("nullable");
 static const string kUtf8InCpp("utf8InCpp");
 static const string kVintfStability("VintfStability");
 static const string kUnsupportedAppUsage("UnsupportedAppUsage");
 static const string kSystemApi("SystemApi");
-static const string kStableParcelable("JavaOnlyStableParcelable");
+static const string kJavaStableParcelable("JavaOnlyStableParcelable");
 static const string kBacking("Backing");
 
 static const std::map<string, std::map<std::string, std::string>> kAnnotationParameters{
@@ -131,7 +135,7 @@ static const std::map<string, std::map<std::string, std::string>> kAnnotationPar
       {"publicAlternatives", "String"},
       {"trackingBug", "long"}}},
     {kSystemApi, {}},
-    {kStableParcelable, {}},
+    {kJavaStableParcelable, {}},
     {kBacking, {{"type", "String"}}}};
 
 AidlAnnotation* AidlAnnotation::Parse(
@@ -292,8 +296,8 @@ bool AidlAnnotatable::IsSystemApi() const {
   return HasAnnotation(annotations_, kSystemApi);
 }
 
-bool AidlAnnotatable::IsStableParcelable() const {
-  return HasAnnotation(annotations_, kStableParcelable);
+bool AidlAnnotatable::IsStableApiParcelable(Options::Language lang) const {
+  return HasAnnotation(annotations_, kJavaStableParcelable) && lang == Options::Language::JAVA;
 }
 
 bool AidlAnnotatable::CheckValidAnnotations() const {
@@ -375,15 +379,18 @@ bool AidlTypeSpecifier::CheckValid(const AidlTypenames& typenames) const {
     return false;
   }
   if (IsGeneric()) {
-    auto& types = GetTypeParameters();
-    // TODO(b/136048684) Allow them when it supports primitive type somewhere.
-    if (std::any_of(types.begin(), types.end(), [](auto& type_ptr) {
-          return AidlTypenames::IsPrimitiveTypename(type_ptr->GetName());
-        })) {
-      AIDL_ERROR(this) << "A generic type cannot has any primitive type parameters.";
-      return false;
-    }
     const string& type_name = GetName();
+
+    auto& types = GetTypeParameters();
+    // TODO(b/136048684) Disallow to use primitive types only if it is List or Map.
+    if (type_name == "List" || type_name == "Map") {
+      if (std::any_of(types.begin(), types.end(), [](auto& type_ptr) {
+            return AidlTypenames::IsPrimitiveTypename(type_ptr->GetName());
+          })) {
+        AIDL_ERROR(this) << "A generic type cannot has any primitive type parameters.";
+        return false;
+      }
+    }
     const auto definedType = typenames.TryGetDefinedType(type_name);
     const auto parameterizable =
         definedType != nullptr ? definedType->AsParameterizable() : nullptr;
@@ -401,6 +408,14 @@ bool AidlTypeSpecifier::CheckValid(const AidlTypenames& typenames) const {
         AIDL_ERROR(this) << "Map must have 0 or 2 type parameters, but got "
                          << "'" << ToString() << "'";
         return false;
+      }
+      if (num == 2) {
+        const string& key_type = GetTypeParameters()[0]->GetName();
+        if (key_type != "String") {
+          AIDL_ERROR(this) << "The type of key in map must be String, but it is "
+                           << "'" << key_type << "'";
+          return false;
+        }
       }
     } else if (isUserDefinedGenericType) {
       const size_t allowed = parameterizable->GetTypeParameters().size();
@@ -674,7 +689,7 @@ bool AidlParameterizable<std::string>::CheckValid() const {
 }
 
 bool AidlParcelable::CheckValid(const AidlTypenames&) const {
-  static const std::set<string> allowed{kStableParcelable};
+  static const std::set<string> allowed{kJavaStableParcelable};
   if (!CheckValidAnnotations()) {
     return false;
   }
@@ -727,11 +742,15 @@ bool AidlStructuredParcelable::CheckValid(const AidlTypenames& typenames) const 
 
 // TODO: we should treat every backend all the same in future.
 bool AidlTypeSpecifier::LanguageSpecificCheckValid(Options::Language lang) const {
-  if (lang == Options::Language::CPP) {
+  if (lang != Options::Language::JAVA) {
     if (this->GetName() == "List" && !this->IsGeneric()) {
-      AIDL_ERROR(this) << "List without type isn't supported in cpp.";
+      AIDL_ERROR(this) << "Currently, only the Java backend supports non-generic List.";
       return false;
     }
+  }
+  if (this->GetName() == "FileDescriptor" && lang == Options::Language::NDK) {
+    AIDL_ERROR(this) << "FileDescriptor isn't supported with the NDK.";
+    return false;
   }
   if (this->IsGeneric()) {
     if (this->GetName() == "List") {
@@ -755,11 +774,12 @@ bool AidlTypeSpecifier::LanguageSpecificCheckValid(Options::Language lang) const
           }
         }
       }
-    } else if (this->GetName() == "Map") {
-      if (lang != Options::Language::JAVA) {
-        AIDL_ERROR(this) << "Currently, only Java backend supports Map.";
-        return false;
-      }
+    }
+  }
+  if (this->GetName() == "Map" || this->GetName() == "CharSequence") {
+    if (lang != Options::Language::JAVA) {
+      AIDL_ERROR(this) << "Currently, only Java backend supports " << this->GetName() << ".";
+      return false;
     }
   }
   if (lang == Options::Language::JAVA) {
@@ -779,10 +799,6 @@ bool AidlTypeSpecifier::LanguageSpecificCheckValid(Options::Language lang) const
 // TODO: we should treat every backend all the same in future.
 bool AidlParcelable::LanguageSpecificCheckValid(Options::Language lang) const {
   if (lang != Options::Language::JAVA) {
-    if (this->IsStableParcelable()) {
-      AIDL_ERROR(this) << "@JavaOnlyStableParcelable supports only Java target.";
-      return false;
-    }
     const AidlParcelable* unstructuredParcelable = this->AsUnstructuredParcelable();
     if (unstructuredParcelable != nullptr) {
       if (unstructuredParcelable->GetCppHeader().empty()) {

@@ -84,17 +84,20 @@ cc_binary_host {
     static_libs: [
         "libaidl-common",
         "libbase",
+        "liblog",
     ],
 }
 
-// aidl-cpp executable
+// aidl-cpp legacy executable, please use 'aidl' instead
 cc_binary_host {
     name: "aidl-cpp",
     defaults: ["aidl_defaults"],
-    srcs: ["main_cpp.cpp"],
+    srcs: ["main.cpp"],
+    cflags: ["-DAIDL_CPP_BUILD"],
     static_libs: [
         "libaidl-common",
         "libbase",
+        "liblog",
     ],
 }
 
@@ -134,14 +137,8 @@ cc_test {
         "libbase",
         "libcutils",
         "libgmock",
+        "liblog",
     ],
-    target: {
-        android: {
-            static_libs: [
-                "liblog",
-            ],
-        },
-    },
 }
 
 cc_fuzz {
@@ -169,14 +166,8 @@ cc_fuzz {
         "libaidl-common",
         "libbase",
         "libcutils",
+        "liblog",
     ],
-    target: {
-        android: {
-            static_libs: [
-                "liblog",
-            ],
-        },
-    },
     // Enable this to show additional information about what is being parsed during fuzzing.
     // cflags: ["-DFUZZ_LOG"],
 }
@@ -270,11 +261,16 @@ android_app {
     resource_dirs: ["tests/java_app/resources"],
     srcs: [
         "tests/android/aidl/tests/*.aidl",
+        "tests/android/aidl/tests/generic/*.aidl",
+        "tests/android/aidl/tests/map/*.aidl",
+        "tests/java_app/src/android/aidl/tests/GenericTests.java",
+        "tests/java_app/src/android/aidl/tests/MapTests.java",
         "tests/java_app/src/android/aidl/tests/NullableTests.java",
         "tests/java_app/src/android/aidl/tests/SimpleParcelable.java",
         "tests/java_app/src/android/aidl/tests/TestFailException.java",
         "tests/java_app/src/android/aidl/tests/TestLogger.java",
         "tests/java_app/src/android/aidl/tests/TestServiceClient.java",
+        "tests/java_app/src/android/aidl/tests/generic/Pair.java",
     ],
     aidl: {
         include_dirs: [
