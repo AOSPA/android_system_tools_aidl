@@ -34,13 +34,14 @@ import (
 )
 
 var (
-	aidlInterfaceSuffix = "_interface"
-	aidlApiDir          = "aidl_api"
-	aidlApiSuffix       = "-api"
-	langCpp             = "cpp"
-	langJava            = "java"
-	langNdk             = "ndk"
-	langNdkPlatform     = "ndk_platform"
+	aidlInterfaceSuffix       = "_interface"
+	aidlMetadataSingletonName = "aidl_metadata_json"
+	aidlApiDir                = "aidl_api"
+	aidlApiSuffix             = "-api"
+	langCpp                   = "cpp"
+	langJava                  = "java"
+	langNdk                   = "ndk"
+	langNdkPlatform           = "ndk_platform"
 
 	pctx = android.NewPackageContext("android/aidl")
 
@@ -76,6 +77,17 @@ var (
 		CommandDeps: []string{"${aidlCmd}"},
 	}, "imports", "outDir", "hashFile", "latestVersion")
 
+	aidlMetadataRule = pctx.StaticRule("aidlMetadataRule", blueprint.RuleParams{
+		Command: `rm -f ${out} && { ` +
+			`echo '{' && ` +
+			`echo "\"name\": \"${name}\"," && ` +
+			`echo "\"stability\": \"${stability}\"," && ` +
+			`echo "\"types\": [${types}]" && ` +
+			`echo '}' ` +
+			`;} >> ${out}`,
+		Description: "AIDL metadata: ${out}",
+	}, "name", "stability", "types")
+
 	aidlDumpMappingsRule = pctx.StaticRule("aidlDumpMappingsRule", blueprint.RuleParams{
 		Command: `rm -rf "${outDir}" && mkdir -p "${outDir}" && ` +
 			`${aidlCmd} --apimapping ${outDir}/intermediate.txt ${in} ${imports} && ` +
@@ -106,6 +118,21 @@ var (
 			`(cat ${messageFile} && exit 1)`,
 		Description: "Check equality of ${new} and ${old}",
 	}, "old", "new", "messageFile", "oldHashFile", "newHashFile")
+
+	joinJsonObjectsToArrayRule = pctx.StaticRule("joinJsonObjectsToArrayRule", blueprint.RuleParams{
+		Rspfile:        "$out.rsp",
+		RspfileContent: "$files",
+		Command: "rm -rf ${out} && " +
+			// Start the output array with an opening bracket.
+			"echo '[' >> ${out} && " +
+			// Append each input file and a comma to the output.
+			"for file in $$(cat ${out}.rsp); do " +
+			"cat $$file >> ${out}; echo ',' >> ${out}; " +
+			"done && " +
+			// Remove the last comma, replacing it with the closing bracket.
+			"sed -i '$$d' ${out} && echo ']' >> ${out}",
+		Description: "Joining JSON objects into array ${out}",
+	}, "files")
 )
 
 func init() {
@@ -115,6 +142,7 @@ func init() {
 	android.RegisterModuleType("aidl_interface", aidlInterfaceFactory)
 	android.RegisterModuleType("aidl_mapping", aidlMappingFactory)
 	android.RegisterMakeVarsProvider(pctx, allAidlInterfacesMakeVars)
+	android.RegisterModuleType("aidl_interfaces_metadata", aidlInterfacesMetadataSingletonFactory)
 }
 
 // wrap(p, a, s) = [p + v + s for v in a]
@@ -236,19 +264,25 @@ func (g *aidlGenRule) GenerateAndroidBuildActions(ctx android.ModuleContext) {
 	})
 }
 
-func (g *aidlGenRule) generateBuildActionsForSingleAidl(ctx android.ModuleContext, src android.Path) (android.WritablePath, android.Paths) {
-	// baseDir is the directory where the package name starts. e.g. For an AIDL fil
-	// mymodule/aidl_src/com/android/IFoo.aidl, baseDir is mymodule/aidl_src given that the package name is
-	// com.android. The build system however don't know the package name without actually reading the AIDL file.
-	// Therefore, we rely on the user to correctly set the base directory via following two methods:
-	// 1) via the 'path' property of filegroup or
-	// 2) via `local_include_dir' of the aidl_interface module.
+// baseDir is the directory where the package name starts. e.g. For an AIDL fil
+// mymodule/aidl_src/com/android/IFoo.aidl, baseDir is mymodule/aidl_src given that the package name is
+// com.android. The build system however don't know the package name without actually reading the AIDL file.
+// Therefore, we rely on the user to correctly set the base directory via following two methods:
+// 1) via the 'path' property of filegroup or
+// 2) via `local_include_dir' of the aidl_interface module.
+func getBaseDir(ctx android.ModuleContext, src android.Path, aidlRoot android.Path) string {
 	// By default, we try to get 1) by reading Rel() of the input path.
 	baseDir := strings.TrimSuffix(src.String(), src.Rel())
 	// However, if 2) is set and it's more specific (i.e. deeper) than 1), we use 2).
-	if aidlRoot := android.PathForModuleSrc(ctx, g.properties.AidlRoot).String(); strings.HasPrefix(aidlRoot, baseDir) {
-		baseDir = aidlRoot
+	if strings.HasPrefix(aidlRoot.String(), baseDir) {
+		baseDir = aidlRoot.String()
 	}
+	return baseDir
+}
+
+func (g *aidlGenRule) generateBuildActionsForSingleAidl(ctx android.ModuleContext, src android.Path) (android.WritablePath, android.Paths) {
+	baseDir := getBaseDir(ctx, src, android.PathForModuleSrc(ctx, g.properties.AidlRoot))
+
 	var ext string
 	if g.properties.Lang == langJava {
 		ext = "java"
@@ -267,7 +301,7 @@ func (g *aidlGenRule) generateBuildActionsForSingleAidl(ctx android.ModuleContex
 		if !strings.HasPrefix(baseDir, ctx.Config().BuildDir()) {
 			hashFile := android.ExistentPathForSource(ctx, baseDir, ".hash")
 			if hashFile.Valid() {
-				hash = "$$(read -r <"+hashFile.Path().String()+" hash extra; printf '%s' \"$$hash\")"
+				hash = "$$(read -r <" + hashFile.Path().String() + " hash extra; printf '%s' \"$$hash\")"
 				implicits = append(implicits, hashFile.Path())
 			}
 		}
@@ -427,11 +461,9 @@ func (m *aidlApi) createApiDumpFromSource(ctx android.ModuleContext) (apiDir and
 	})
 
 	apiDir = android.PathForModuleOut(ctx, "dump")
+	aidlRoot := android.PathForModuleSrc(ctx, m.properties.AidlRoot)
 	for _, src := range srcs {
-		baseDir := strings.TrimSuffix(src.String(), src.Rel())
-		if aidlRoot := android.PathForModuleSrc(ctx, m.properties.AidlRoot).String(); strings.HasPrefix(aidlRoot, baseDir) {
-			baseDir = aidlRoot
-		}
+		baseDir := getBaseDir(ctx, src, aidlRoot)
 		relPath, _ := filepath.Rel(baseDir, src.String())
 		outFile := android.PathForModuleOut(ctx, "dump", relPath)
 		apiFiles = append(apiFiles, outFile)
@@ -604,10 +636,12 @@ func aidlApiFactory() android.Module {
 type CommonBackendProperties struct {
 	// Whether to generate code in the corresponding backend.
 	// Default: true
-	Enabled *bool
+	Enabled        *bool
+	Apex_available []string
 }
 
 type CommonNativeBackendProperties struct {
+	CommonBackendProperties
 	// Whether to generate additional code for gathering information
 	// about the transactions.
 	// Default: false
@@ -669,13 +703,11 @@ type aidlInterfaceProperties struct {
 		// Backend of the compiler generating code for C++ clients using
 		// libbinder (unstable C++ interface)
 		Cpp struct {
-			CommonBackendProperties
 			CommonNativeBackendProperties
 		}
 		// Backend of the compiler generating code for C++ clients using
 		// libbinder_ndk (stable C interface to system's libbinder)
 		Ndk struct {
-			CommonBackendProperties
 			CommonNativeBackendProperties
 		}
 	}
@@ -685,6 +717,8 @@ type aidlInterface struct {
 	android.ModuleBase
 
 	properties aidlInterfaceProperties
+
+	computedTypes []string
 }
 
 func (i *aidlInterface) shouldGenerateJavaBackend() bool {
@@ -976,9 +1010,21 @@ func addCppLibrary(mctx android.LoadHookContext, i *aidlInterface, version strin
 		panic("Unrecognized language: " + lang)
 	}
 
+	vendorAvailable := i.properties.Vendor_available
+	if lang == langCpp && "vintf" == proptools.String(i.properties.Stability) {
+		// Vendors cannot use the libbinder (cpp) backend of AIDL in a way that is stable.
+		// So, in order to prevent accidental usage of these library by vendor, forcibly
+		// disabling this version of the library.
+		//
+		// It may be the case in the future that we will want to enable this (if some generic
+		// helper should be used by both libbinder vendor things using /dev/vndbinder as well
+		// as those things using /dev/binder + libbinder_ndk to talk to stable interfaces).
+		vendorAvailable = proptools.BoolPtr(false)
+	}
+
 	mctx.CreateModule(cc.LibraryFactory, &ccProperties{
 		Name:                      proptools.StringPtr(cppModuleGen),
-		Vendor_available:          i.properties.Vendor_available,
+		Vendor_available:          vendorAvailable,
 		Host_supported:            host_supported,
 		Defaults:                  []string{"aidl-cpp-module-defaults"},
 		Generated_sources:         []string{cppSourceGen},
@@ -994,6 +1040,7 @@ func addCppLibrary(mctx android.LoadHookContext, i *aidlInterface, version strin
 		Cpp_std:                   cpp_std,
 		Cflags:                    append(addCflags, "-Wextra", "-Wall", "-Werror"),
 		Stem:                      proptools.StringPtr(cppOutputGen),
+		Apex_available:            commonProperties.Apex_available,
 	}, &i.properties.VndkProperties, &commonProperties.VndkProperties)
 
 	return cppModuleGen
@@ -1032,13 +1079,14 @@ func addJavaLibrary(mctx android.LoadHookContext, i *aidlInterface, version stri
 	})
 
 	mctx.CreateModule(java.LibraryFactory, &javaProperties{
-		Name:          proptools.StringPtr(javaModuleGen),
-		Installable:   proptools.BoolPtr(true),
-		Defaults:      []string{"aidl-java-module-defaults"},
-		Sdk_version:   sdkVersion,
-		Platform_apis: i.properties.Backend.Java.Platform_apis,
-		Static_libs:   wrap("", i.properties.Imports, "-java"),
-		Srcs:          []string{":" + javaSourceGen},
+		Name:           proptools.StringPtr(javaModuleGen),
+		Installable:    proptools.BoolPtr(true),
+		Defaults:       []string{"aidl-java-module-defaults"},
+		Sdk_version:    sdkVersion,
+		Platform_apis:  i.properties.Backend.Java.Platform_apis,
+		Static_libs:    wrap("", i.properties.Imports, "-java"),
+		Srcs:           []string{":" + javaSourceGen},
+		Apex_available: i.properties.Backend.Java.Apex_available,
 	})
 
 	return javaModuleGen
@@ -1063,9 +1111,18 @@ func (i *aidlInterface) Name() string {
 	return i.ModuleBase.Name() + aidlInterfaceSuffix
 }
 func (i *aidlInterface) GenerateAndroidBuildActions(ctx android.ModuleContext) {
+	aidlRoot := android.PathForModuleSrc(ctx, i.properties.Local_include_dir)
+	for _, src := range android.PathsForModuleSrc(ctx, i.properties.Srcs) {
+		baseDir := getBaseDir(ctx, src, aidlRoot)
+		relPath, _ := filepath.Rel(baseDir, src.String())
+		computedType := strings.TrimSuffix(strings.ReplaceAll(relPath, "/", "."), ".aidl")
+		i.computedTypes = append(i.computedTypes, computedType)
+	}
 }
 func (i *aidlInterface) DepsMutator(ctx android.BottomUpMutatorContext) {
 	i.checkImports(ctx)
+
+	ctx.AddReverseDependency(ctx.Module(), nil, aidlMetadataSingletonName)
 }
 
 var (
@@ -1094,6 +1151,66 @@ func lookupInterface(name string, config android.Config) *aidlInterface {
 		}
 	}
 	return nil
+}
+
+func aidlInterfacesMetadataSingletonFactory() android.Module {
+	i := &aidlInterfacesMetadataSingleton{}
+	android.InitAndroidModule(i)
+	return i
+}
+
+type aidlInterfacesMetadataSingleton struct {
+	android.ModuleBase
+
+	metadataPath android.OutputPath
+}
+
+var _ android.OutputFileProducer = (*aidlInterfacesMetadataSingleton)(nil)
+
+func (m *aidlInterfacesMetadataSingleton) GenerateAndroidBuildActions(ctx android.ModuleContext) {
+	if m.Name() != aidlMetadataSingletonName {
+		ctx.PropertyErrorf("name", "must be %s", aidlMetadataSingletonName)
+		return
+	}
+
+	var metadataOutputs android.Paths
+	ctx.VisitDirectDeps(func(m android.Module) {
+		if !m.ExportedToMake() {
+			return
+		}
+		if t, ok := m.(*aidlInterface); ok {
+			metadataPath := android.PathForModuleOut(ctx, "metadata_"+m.Name())
+			ctx.Build(pctx, android.BuildParams{
+				Rule:   aidlMetadataRule,
+				Output: metadataPath,
+				Args: map[string]string{
+					"name":      t.Name(),
+					"stability": proptools.StringDefault(t.properties.Stability, ""),
+					"types":     strings.Join(wrap(`\"`, t.computedTypes, `\"`), ", "),
+				},
+			})
+			metadataOutputs = append(metadataOutputs, metadataPath)
+		}
+	})
+
+	m.metadataPath = android.PathForModuleOut(ctx, "aidl_metadata.json").OutputPath
+
+	ctx.Build(pctx, android.BuildParams{
+		Rule:   joinJsonObjectsToArrayRule,
+		Inputs: metadataOutputs,
+		Output: m.metadataPath,
+		Args: map[string]string{
+			"files": strings.Join(metadataOutputs.Strings(), " "),
+		},
+	})
+}
+
+func (m *aidlInterfacesMetadataSingleton) OutputFiles(tag string) (android.Paths, error) {
+	if tag != "" {
+		return nil, fmt.Errorf("unsupported tag %q", tag)
+	}
+
+	return android.Paths{m.metadataPath}, nil
 }
 
 type aidlMappingProperties struct {

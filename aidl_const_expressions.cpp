@@ -309,7 +309,7 @@ AidlConstantValue* AidlConstantValue::String(const AidlLocation& location, const
 }
 
 AidlConstantValue* AidlConstantValue::ShallowIntegralCopy(const AidlConstantValue& other) {
-  // TODO(b/142894901): Perform full proper copy
+  // TODO(b/141313220) Perform a full copy instead of parsing+unparsing
   AidlTypeSpecifier type = AidlTypeSpecifier(AIDL_LOCATION_HERE, "long", false, nullptr, "");
   // TODO(b/142722772) CheckValid() should be called before ValueString()
   if (!other.CheckValid() || !other.evaluate(type)) {
@@ -755,7 +755,7 @@ bool AidlBinaryConstExpression::evaluate(const AidlTypeSpecifier& type) const {
     // instead of promoting rval, simply casting it to int64 should also be good.
     int64_t numBits = right_val_->cast<int64_t>();
     if (numBits < 0) {
-      // shifting with negative number of bits is undefined in C. In HIDL it
+      // shifting with negative number of bits is undefined in C. In AIDL it
       // is defined as shifting into the other direction.
       newOp = OPEQ("<<") ? ">>" : "<<";
       numBits = -numBits;
