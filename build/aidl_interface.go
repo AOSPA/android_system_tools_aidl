@@ -672,9 +672,7 @@ func (m *aidlApi) GenerateAndroidBuildActions(ctx android.ModuleContext) {
 			alwaysChecked := android.PathForModuleOut(ctx, "checkapi_current.timestamp")
 			rb.Command().Text("false").ImplicitOutput(alwaysChecked)
 			rb.Build(pctx, ctx, "check_current_aidl_api", "")
-			// TODO(b/147433177) uncomment the below line when all aidl_interface modules
-			// are with 'current' API dump.
-			//m.checkApiTimestamps = append(m.checkApiTimestamps, alwaysChecked)
+			m.checkApiTimestamps = append(m.checkApiTimestamps, alwaysChecked)
 		}
 	}
 
@@ -1433,7 +1431,7 @@ func allAidlInterfacesMakeVars(ctx android.MakeVarsContext) {
 	names := []string{}
 	ctx.VisitAllModules(func(module android.Module) {
 		if ai, ok := module.(*aidlInterface); ok {
-			names = append(names, ai.Name())
+			names = append(names, ai.BaseModuleName())
 		}
 	})
 	ctx.Strict("ALL_AIDL_INTERFACES", strings.Join(names, " "))
