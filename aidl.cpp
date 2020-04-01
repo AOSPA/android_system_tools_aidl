@@ -232,7 +232,14 @@ bool write_dep_file(const Options& options, const AidlDefinedType& defined_type,
   }
 
   // Encode that the output file depends on aidl input files.
-  writer->Write("%s : \\\n", output_file.c_str());
+  if (defined_type.AsUnstructuredParcelable() != nullptr &&
+      options.TargetLanguage() == Options::Language::JAVA) {
+    // Legacy behavior. For parcelable declarations in Java, don't emit output file as
+    // the dependency target. b/141372861
+    writer->Write(" : \\\n");
+  } else {
+    writer->Write("%s : \\\n", output_file.c_str());
+  }
   writer->Write("  %s", Join(source_aidl, " \\\n  ").c_str());
   writer->Write("\n");
 
@@ -769,8 +776,13 @@ int compile_aidl(const Options& options, const IoDelegate& io_delegate) {
                          io_delegate);
         success = true;
       } else if (lang == Options::Language::JAVA) {
-        success =
-            java::generate_java(output_file_name, defined_type, &java_types, io_delegate, options);
+        if (defined_type->AsUnstructuredParcelable() != nullptr) {
+          // Legacy behavior. For parcelable declarations in Java, don't generate output file.
+          success = true;
+        } else {
+          success =
+              java::generate_java(output_file_name, defined_type, &java_types, io_delegate, options);
+        }
       } else {
         LOG(FATAL) << "Should not reach here" << endl;
         return 1;
