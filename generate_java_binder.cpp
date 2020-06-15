@@ -882,7 +882,7 @@ static void generate_methods(const AidlInterface& iface, const AidlMethod& metho
            << "public synchronized String " << kGetInterfaceHash << "()"
            << " throws "
            << "android.os.RemoteException {\n"
-           << "  if (mCachedHash == \"-1\") {\n"
+           << "  if (\"-1\".equals(mCachedHash)) {\n"
            << "    android.os.Parcel data = android.os.Parcel.obtain();\n"
            << "    android.os.Parcel reply = android.os.Parcel.obtain();\n"
            << "    try {\n"
@@ -1131,7 +1131,13 @@ std::unique_ptr<Class> generate_binder_interface_class(const AidlInterface* ifac
   const string i_name = iface->GetCanonicalName();
   stub->elements.emplace_back(std::make_shared<LiteralClassElement>(
       StringPrintf("public static boolean setDefaultImpl(%s impl) {\n"
-                   "  if (Stub.Proxy.sDefaultImpl == null && impl != null) {\n"
+                   "  // Only one user of this interface can use this function\n"
+                   "  // at a time. This is a heuristic to detect if two different\n"
+                   "  // users in the same process use this function.\n"
+                   "  if (Stub.Proxy.sDefaultImpl != null) {\n"
+                   "    throw new IllegalStateException(\"setDefaultImpl() called twice\");\n"
+                   "  }\n"
+                   "  if (impl != null) {\n"
                    "    Stub.Proxy.sDefaultImpl = impl;\n"
                    "    return true;\n"
                    "  }\n"
